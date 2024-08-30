@@ -1,0 +1,3 @@
+# ignorer les modeles
+build/
+**/build/
