@@ -1,4 +1,4 @@
-name: slam_exp
+name: droid_exp
 channels:
   - pyg
   - pytorch
