@@ -149,8 +149,6 @@ def image_stream_mono(imagedir, image_size=[320, 512], stereo=False, stride=1):
 
 
 def image_stream_stereo(imagedir, image_size=[320, 512], stereo=False, stride=1):
-#def image_stream_stereo(imageadresse, image_size=[240, 320], stereo=False, stride=1):
-    # recuperation nom images
     image_list_l = sorted(glob.glob(os.path.join(imagedir, 'image_left', '*.png')))[::stride]
     image_list_r = sorted(glob.glob(os.path.join(imagedir, 'image_right', '*.png')))[::stride]
 
@@ -160,8 +158,6 @@ def image_stream_stereo(imagedir, image_size=[320, 512], stereo=False, stride=1)
 
     for t, (imfile_l, imfile_r) in enumerate(zip(image_list_l,image_list_r)):
 
-        # read all png images in folder
-        #print("------- image paths ------")
         images_left = imfile_l
         images_right = imfile_r
 
@@ -184,8 +180,6 @@ def image_stream_stereo(imagedir, image_size=[320, 512], stereo=False, stride=1)
         intrinsics[2] *= image_size[1] / wd0
         intrinsics[3] *= image_size[0] / ht0
 
-        #yield images, intrinsics
-        #return images, intrinsics
         yield t, images, intrinsics
 
 

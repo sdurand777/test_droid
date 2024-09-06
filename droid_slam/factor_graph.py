@@ -444,24 +444,11 @@ class FactorGraph:
         ii = ii.reshape(-1).to(dtype=torch.long, device=self.device)
         jj = jj.reshape(-1).to(dtype=torch.long, device=self.device)
 
-        # print("ii ", ii)
-        # print("jj ", jj)
 
+        # cas stereo il faut prendre en compte la camera droite
         c = 1 if self.video.stereo else 0
 
-        # print("c ", c)
-        # print("r ", r)
-
         keep = ((ii - jj).abs() > c) & ((ii - jj).abs() <= r)
-
-        # print("ii.shape : ", ii.shape)
-        # print("jj.shape : ", jj.shape)
-
-        # print("keep.shape : ", keep.shape)
-        # print("keep :\n", keep)
-        #
-        # print("ii[keep] : ",ii[keep])
-        # print("jj[keep] : ",jj[keep])
 
         self.add_factors(ii[keep], jj[keep])
 
