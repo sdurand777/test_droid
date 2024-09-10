@@ -33,8 +33,16 @@ class DepthVideo:
         c = 1 if not self.stereo else 2
 
         ### feature attributes ### save all feature maps extracted
+
+        # stereo fearure maps
         self.fmaps = torch.zeros(buffer, c, 128, ht//8, wd//8, dtype=torch.half, device="cuda").share_memory_()
+
+        # left only context feature maps
+
+        # latent for conv gru
         self.nets = torch.zeros(buffer, 128, ht//8, wd//8, dtype=torch.half, device="cuda").share_memory_()
+
+        # correlation features
         self.inps = torch.zeros(buffer, 128, ht//8, wd//8, dtype=torch.half, device="cuda").share_memory_()
 
         # initialize poses to identity transformation

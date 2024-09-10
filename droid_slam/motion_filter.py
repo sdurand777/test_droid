@@ -71,6 +71,10 @@ class MotionFilter:
         gmap = self.__feature_encoder(inputs)
         
         print("gmap.shape : ", gmap.shape)
+        
+        # extraction feature
+#         import pdb; pdb.set_trace()
+
 
         ### always add first frame to the depth video ###
         if self.video.counter.value == 0:
@@ -78,6 +82,7 @@ class MotionFilter:
             # extract features map
 
             print("inputs[:,[0]] ", inputs[:,[0]])
+            # context feature only on left
             net, inp = self.__context_encoder(inputs[:,[0]])
 
             # definition of self net inp and fmap
@@ -88,6 +93,9 @@ class MotionFilter:
             print("self.fmap.shape : ", self.fmap.shape)
 
             # share data with all process
+            # on recup image[0] left uniquement
+            # gmap stereo features net et inp left context features
+            # gmap [2, 128, 40, 64] inp [1, 128, 40, 64] net [1, 128, 40, 64]
             self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
             print("self.net[0,0].shape : ", self.net[0,0].shape)
             print("self.inp[0,0].shape : ", self.inp[0,0].shape)
@@ -95,6 +103,8 @@ class MotionFilter:
         ### only add new frame if there is enough motion ###
         else:                
             # index correlation volume meshgrid of the pixel coords for an image
+            # shape [1,1,40,64,2] size of feature maps
+            # on a toutes les coords des pixels de img 40 par 64
             coords0 = pops.coords_grid(ht, wd, device=self.device)[None,None]
 
             # gmap new image et fmap previous
@@ -105,7 +115,12 @@ class MotionFilter:
             print("self.gmap.shape ", gmap.shape)
             print("self.gmap[None,[0]] ", gmap[None,[0]].shape)
 
-            # on construit un objet Corrblock en utilisant les feature maps de gauche [0] avec un batch size de 1 avec Nonea et on applique la methode call avec (coords0) pour recuperer uniquement les correlations voulues
+            # on construit un objet Corrblock en utilisant les feature maps de gauche [0] avec un batch size de 1 avec None et on applique la methode call avec (coords0) pour recuperer uniquement les correlations voulues
+            # on a fmap gmap previous keyframe
+            # on a gmap stereo feature current frame
+            # on a [0] pour prendre que la gauche
+            # on donne coords0 en arg donc on utilise direct la methode call de CorrBlock apres init
+            # corr [1, 1 ,196, 40, 64]
             corr = CorrBlock(self.fmap[None,[0]], gmap[None,[0]])(coords0)
             
             print("corr.shape : ", corr.shape)
@@ -148,7 +163,8 @@ class MotionFilter:
                 # update counter of frame with no enough motion
                 self.count += 1
 
-
+        # end of tracking motion
+#         import pdb; pdb.set_trace()
 
 
 

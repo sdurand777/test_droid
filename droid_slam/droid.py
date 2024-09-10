@@ -87,16 +87,22 @@ class Droid:
         # plt.show()
 
         with torch.no_grad():
+
+            # before motion track
+#             import pdb; pdb.set_trace()
+
             # check there is enough motion
             self.filterx.track(tstamp, image, depth, intrinsics)
+
+            # after track
+#             import pdb; pdb.set_trace()
 
             # local bundle adjustment
             self.frontend()
 
-            # # global bundle adjustment
-            # if tstamp > 40:
-            #     print("#" * 32)
-            #     self.backend()
+            # local ba
+#             import pdb; pdb.set_trace()
+
 
     def terminate(self, stream=None):
         """ terminate the visualization process, return poses [t, q] """

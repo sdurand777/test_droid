@@ -27,16 +27,37 @@ class CorrBlock:
         self.corr_pyramid = []
         self.num_blocks = 1  # Initialement, il y a un seul bloc
         # all pairs correlation
+        # fmap1 previous left [1,128,40,64]
+        # fmap2 current left [1,128,40,64]
         corr = CorrBlock.corr(fmap1, fmap2)
+
+        # compute corr
+#         import pdb; pdb.set_trace()
 
         batch, num, h1, w1, h2, w2 = corr.shape
         corr = corr.reshape(batch*num*h1*w1, 1, h2, w2)
+        # corr [2560, 1, 40, 64]
         
-        # build global pyramid
+        # corr reshaped before building global pyramid
+#         import pdb; pdb.set_trace()
+
+        # build global pyramid dans self.corr_pyramid list des 4
+
+        # la pyramid dimensions
+        # [1, 40, 64, 40, 64]
+        # [1, 40, 64, 20, 32]
+        # [1, 40, 64, 10, 16]
+        # [1, 40, 64, 5, 8]
+        # les features de previous gauches sont maintenues pleine taille et les features de current gauche sont resized pour faire la pyramid
         for i in range(self.num_levels):
             self.corr_pyramid.append(
                 corr.view(batch*num, h1, w1, h2//2**i, w2//2**i))
             corr = F.avg_pool2d(corr, 2, stride=2)
+
+        # a la fin corr.shape [2560,1,2,4] pas utilise dans la pyramid
+        # init correlation
+#         import pdb; pdb.set_trace()
+
             
     def __call__(self, coords):
 
@@ -47,13 +68,24 @@ class CorrBlock:
         out_pyramid = []
         batch, num, ht, wd, _ = coords.shape
         coords = coords.permute(0,1,4,2,3)
+        # reshape des coords [1,2,40,64]
         coords = coords.contiguous().view(batch*num, 2, ht, wd)
         
-        # extract lookup pyramid
+        # init corrblock call
+#         import pdb; pdb.set_trace()
+
+        # extract lookup pyramid dimensions
+        # [1,1,49,40,64]
+        # [1,1,49,40,64]
+        # [1,1,49,40,64]
+        # [1,1,49,40,64]
         for i in range(self.num_levels):
             # lookup operator
+            # on divise les valeurs de coords pour parcourir la feature map divise par deux
             corr = CorrSampler.apply(self.corr_pyramid[i], coords/2**i, self.radius)
             out_pyramid.append(corr.view(batch, num, -1, ht, wd))
+
+#         import pdb; pdb.set_trace()
 
         return torch.cat(out_pyramid, dim=2)
 
@@ -75,9 +107,20 @@ class CorrBlock:
     def corr(fmap1, fmap2):
         """ all-pairs correlation """
         batch, num, dim, ht, wd = fmap1.shape
-        fmap1 = fmap1.reshape(batch*num, dim, ht*wd) / 4.0
-        fmap2 = fmap2.reshape(batch*num, dim, ht*wd) / 4.0
         
+        # init all pair corr
+#         import pdb; pdb.set_trace()
+
+        # reshape 2560 x 128
+        fmap1 = fmap1.reshape(batch*num, dim, ht*wd) / 4.0
+        # reshape 2560 x 128
+        fmap2 = fmap2.reshape(batch*num, dim, ht*wd) / 4.0
+
+        
+        # reshape and resize features
+#         import pdb; pdb.set_trace()
+
+        # on multiplie deux matrices 2D 2560 par 128
         corr = torch.matmul(fmap1.transpose(1,2), fmap2)
         return corr.view(batch, num, ht, wd, ht, wd)
 
