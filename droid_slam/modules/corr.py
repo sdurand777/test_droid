@@ -75,6 +75,7 @@ class CorrBlock:
 #         import pdb; pdb.set_trace()
 
         # extract lookup pyramid dimensions
+        # 49 pour 7x7 7 etant 2xradius + 1
         # [1,1,49,40,64]
         # [1,1,49,40,64]
         # [1,1,49,40,64]
