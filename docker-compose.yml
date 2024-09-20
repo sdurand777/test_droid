@@ -1,0 +1,24 @@
+
+version: "3.9"
+services:
+
+  droid:
+    image: docker_droid
+    network_mode: host
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - DISPLAY=$DISPLAY
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /home/ivm/droid_dev/:/home/smith/droid_dev/
+      - /home/ivm/test_cuda_python/:/home/smith/test_cuda_python/
+      - /home/ivm/config_neovim/:/home/smith/.config/nvim/
+    tty: true
+
