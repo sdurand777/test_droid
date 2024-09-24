@@ -164,7 +164,7 @@ def print_args(tensor_name, indices_spec=None):
 def build_pretty_printer():
     print("build pretty for accessor")
     pp = gdb.printing.RegexpCollectionPrettyPrinter("torch")
-    pp.add_printer('TensorAccessor', '^at::GenericPackedTensorAccessorBase<.*>$', TensorAccessorPrinter)
+    pp.add_printer('TensorAccessor', '^torch::GenericPackedTensorAccessorBase<.*>$', TensorAccessorPrinter)
     return pp
 
 gdb.printing.register_pretty_printer(gdb.current_objfile(), build_pretty_printer())
