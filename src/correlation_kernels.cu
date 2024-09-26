@@ -124,33 +124,38 @@ __global__ void corr_index_backward_kernel(
 }
 
 std::vector<torch::Tensor> corr_index_cuda_forward(
-    torch::Tensor volume,
-    torch::Tensor coords,
-    int radius)
+        torch::Tensor volume,
+        torch::Tensor coords,
+        int radius)
 {
-  const auto batch_size = volume.size(0);
-  const auto ht = volume.size(1);
-  const auto wd = volume.size(2);
+    const auto batch_size = volume.size(0);
+    const auto ht = volume.size(1);
+    const auto wd = volume.size(2);
 
-  const dim3 blocks((wd + BLOCK - 1) / BLOCK, 
-                    (ht + BLOCK - 1) / BLOCK, 
-                    batch_size);
-  
-  const dim3 threads(BLOCK, BLOCK);
+    const dim3 blocks((wd + BLOCK - 1) / BLOCK, 
+            (ht + BLOCK - 1) / BLOCK, 
+            batch_size);
 
-  auto opts = volume.options();
-  torch::Tensor corr = torch::zeros(
-    {batch_size, 2*radius+1, 2*radius+1, ht, wd}, opts);
+    const dim3 threads(BLOCK, BLOCK);
 
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(volume.type(), "sampler_forward_kernel", ([&] {
-    corr_index_forward_kernel<scalar_t><<<blocks, threads>>>(
-      volume.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-      coords.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
-      corr.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-      radius);
-   }));
+    auto opts = volume.options();
+    torch::Tensor corr = torch::zeros(
+            {batch_size, 2*radius+1, 2*radius+1, ht, wd}, opts);
 
-  return {corr};
+    auto volume_accessor = volume.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
+    auto coords_accessor = coords.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
+    auto corr_accessor = corr.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(volume.type(), "sampler_forward_kernel", ([&] {
+
+                corr_index_forward_kernel<scalar_t><<<blocks, threads>>>(
+                        volume.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
+                        coords.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
+                        corr.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
+                        radius);
+                }));
+
+    return {corr};
 
 }
 
