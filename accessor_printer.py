@@ -41,7 +41,29 @@ class TensorAccessorPrinter:
             # Configurer GDB pour afficher tous les éléments
             gdb.execute('set print elements 0', to_string=True)
 
-            # Fonction récursive pour remplir le tenseur
+            # # Fonction récursive pour remplir le tenseur
+            # def fill_tensor(indices, offset):
+            #     if len(indices) == len(sizes_list) - 1:
+            #         # Nous sommes au dernier niveau, il faut récupérer une ligne
+            #         size_at_last_dim = sizes_list[-1]
+            #         line_address = f'({data_address} + {offset})'
+            #         expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
+            #         result = gdb.execute(f'print {expr}', to_string=True)
+            #         
+            #         # Extraire les valeurs entre les accolades
+            #         result = result[result.index('{')+1 : result.index('}')]
+            #         elements = [float(x) for x in result.split(',')]
+            #         
+            #         # Remplir la dernière dimension du tenseur
+            #         tensor[tuple(indices)] = elements
+            #     else:
+            #         # Parcourir les indices récursivement pour chaque dimension
+            #         stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
+            #         for i in range(sizes_list[len(indices)]):
+            #             fill_tensor(indices + [i], offset + i * stride)
+
+
+# Fonction récursive pour remplir le tenseur
             def fill_tensor(indices, offset):
                 if len(indices) == len(sizes_list) - 1:
                     # Nous sommes au dernier niveau, il faut récupérer une ligne
@@ -49,10 +71,21 @@ class TensorAccessorPrinter:
                     line_address = f'({data_address} + {offset})'
                     expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
                     result = gdb.execute(f'print {expr}', to_string=True)
-                    
+
                     # Extraire les valeurs entre les accolades
                     result = result[result.index('{')+1 : result.index('}')]
-                    elements = [float(x) for x in result.split(',')]
+                    
+                    # Gestion du format abrégé "valeur <repeats N times>"
+                    elements = []
+                    for x in result.split(','):
+                        x = x.strip()  # Supprimer les espaces
+                        if '<repeats' in x:
+                            # Gérer les répétitions
+                            value, repeat_info = x.split(' <repeats ')
+                            repeat_count = int(repeat_info.split()[0])
+                            elements.extend([float(value)] * repeat_count)
+                        else:
+                            elements.append(float(x))
                     
                     # Remplir la dernière dimension du tenseur
                     tensor[tuple(indices)] = elements
@@ -61,6 +94,7 @@ class TensorAccessorPrinter:
                     stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
                     for i in range(sizes_list[len(indices)]):
                         fill_tensor(indices + [i], offset + i * stride)
+
 
             # Lancer le remplissage du tenseur avec une fonction récursive
             fill_tensor([], 0)

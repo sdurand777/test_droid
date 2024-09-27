@@ -142,9 +142,9 @@ std::vector<torch::Tensor> corr_index_cuda_forward(
     torch::Tensor corr = torch::zeros(
             {batch_size, 2*radius+1, 2*radius+1, ht, wd}, opts);
 
-    auto volume_accessor = volume.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
+    //auto volume_accessor = volume.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
     auto coords_accessor = coords.packed_accessor32<float, 4, torch::RestrictPtrTraits>();
-    auto corr_accessor = corr.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
+    //auto corr_accessor = corr.packed_accessor32<half, 5, torch::RestrictPtrTraits>();
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(volume.type(), "sampler_forward_kernel", ([&] {
 

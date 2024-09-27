@@ -16,8 +16,6 @@ class TensorPrinter:
 
         if indices_spec is None:
             # Accéder au membre __b_N2at31GenericPackedTensorAccessorBaseIfLm3ENS_17RestrictPtrTraitsEiEE
-            #base = self.val['__b_N2at31GenericPackedTensorAccessorBaseIfLm3ENS_17RestrictPtrTraitsEiEE']
-
             base = self.val['__b_N2at31GenericPackedTensorAccessorBaseIN3c104HalfELm5ENS_17RestrictPtrTraitsEiEE']
             
             # Récupération des informations de l'objet
@@ -25,47 +23,59 @@ class TensorPrinter:
             sizes = base['sizes_']
             strides = base['strides_']
 
-            print("data_ptr : ", data_ptr)
             print("sizes : ", sizes)
-            print("strides : ", strides)
 
             # Extraire les dimensions du tenseur en convertissant les gdb.Value en entiers
             size_length = sizes.type.sizeof // sizes[0].type.sizeof
             sizes_list = [int(sizes[i].cast(gdb.lookup_type('int'))) for i in range(size_length)]
-     
-            print(f"sizes_list : {sizes_list}")
-
+            
             data_address = int(data_ptr)
-            print("data_address : ", data_address)
 
             # Calculer le nombre total d'éléments dans le tenseur
             num_elements = np.prod(sizes_list)
-            print("num_elements : ", num_elements)
+            print(f"num_elements : {num_elements}")
 
-            # Initialiser un tableau NumPy vide avec les bonnes dimensions
-            tensor = np.zeros(sizes_list, dtype=float)
+            # Si le nombre d'éléments est supérieur à 10 000, on affiche seulement les deux dernières dimensions
+            if num_elements > 10000:
+                # Reduire le tenseur aux deux dernières dimensions pour l'affichage
+                reduced_sizes_list = sizes_list[-2:]  # Les deux dernières dimensions
+                print(f"Affichage réduit aux deux dernières dimensions : {reduced_sizes_list}")
 
-
+                # Initialiser un tableau NumPy vide pour les deux dernières dimensions
+                tensor = np.zeros(reduced_sizes_list, dtype=float)
+            else:
+                # Initialiser un tableau NumPy vide avec les dimensions complètes
+                tensor = np.zeros(sizes_list, dtype=float)
+            
             # Configurer GDB pour afficher tous les éléments
             gdb.execute('set print elements 0', to_string=True)
 
-            # Fonction récursive pour remplir le tenseur
+            # Fonction récursive pour remplir le tenseur (modifiée pour tenir compte de la réduction)
             def fill_tensor(indices, offset):
-                if len(indices) == len(sizes_list) - 1:
-                    # Nous sommes au dernier niveau, il faut récupérer une ligne
-                    size_at_last_dim = sizes_list[-1]
+                if len(indices) == len(reduced_sizes_list if num_elements > 10000 else sizes_list) - 1:
+                    size_at_last_dim = reduced_sizes_list[-1] if num_elements > 10000 else sizes_list[-1]
                     line_address = f'({data_address} + {offset})'
                     expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
                     result = gdb.execute(f'print {expr}', to_string=True)
-                    
+
                     # Extraire les valeurs entre les accolades
                     result = result[result.index('{')+1 : result.index('}')]
-                    elements = [float(x) for x in result.split(',')]
                     
+                    # Gestion du format abrégé "valeur <repeats N times>"
+                    elements = []
+                    for x in result.split(','):
+                        x = x.strip()  # Supprimer les espaces
+                        if '<repeats' in x:
+                            # Gérer les répétitions
+                            value, repeat_info = x.split(' <repeats ')
+                            repeat_count = int(repeat_info.split()[0])
+                            elements.extend([float(value)] * repeat_count)
+                        else:
+                            elements.append(float(x))
+
                     # Remplir la dernière dimension du tenseur
                     tensor[tuple(indices)] = elements
                 else:
-                    # Parcourir les indices récursivement pour chaque dimension
                     stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
                     for i in range(sizes_list[len(indices)]):
                         fill_tensor(indices + [i], offset + i * stride)
@@ -74,7 +84,7 @@ class TensorPrinter:
             fill_tensor([], 0)
 
             # Afficher ou utiliser le tenseur
-            #print("Tensor \n", tensor)
+            print(f"Tensor (affichage réduit si applicable): \n {tensor}")
 
             return "Voici un Tensor Kernel"
         else:
@@ -151,6 +161,7 @@ class TensorPrinter:
             
             # Mettre à l'échelle les valeurs à la plage [0, 255]
             matrix_scaled = matrix_normalized * 255
+            matrix_scaled = matrix_scaled.astype(np.uint8)
             # Redimensionner l'image pour qu'elle soit plus grande
 
             image = Image.fromarray(matrix_scaled, mode='L')  # Mode 'L' pour une image en niveaux de gris
@@ -162,6 +173,8 @@ class TensorPrinter:
             image_resized.show()
 
             return matrix
+
+
 
 
 # Fonction pour appeler la méthode avec les indices donnés ou sans

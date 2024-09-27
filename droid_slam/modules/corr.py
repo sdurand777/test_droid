@@ -83,6 +83,8 @@ class CorrBlock:
         for i in range(self.num_levels):
             # lookup operator
             # on divise les valeurs de coords pour parcourir la feature map divise par deux
+
+            import pdb; pdb.set_trace()
             corr = CorrSampler.apply(self.corr_pyramid[i], coords/2**i, self.radius)
             out_pyramid.append(corr.view(batch, num, -1, ht, wd))
 
