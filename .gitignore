@@ -1,6 +1,10 @@
 # ignorer les modeles
 build/
 **/build/
+# ignorer les modeles
+dist/
+**/dist/
+
 
 *.ply
 
