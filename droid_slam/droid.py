@@ -92,6 +92,7 @@ class Droid:
 #             import pdb; pdb.set_trace()
 
             # check there is enough motion
+            # append to video network and image
             self.filterx.track(tstamp, image, depth, intrinsics)
 
             # after track

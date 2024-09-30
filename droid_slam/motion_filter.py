@@ -65,41 +65,27 @@ class MotionFilter:
         inputs = inputs.sub_(self.MEAN).div_(self.STDV)
 
         # extract features for the current image or pair if stereo
-
-        print("inputs.shape ", inputs.shape)
-
         gmap = self.__feature_encoder(inputs)
         
-        print("gmap.shape : ", gmap.shape)
-        
         # extraction feature
-#         import pdb; pdb.set_trace()
-
+        #import pdb; pdb.set_trace()
 
         ### always add first frame to the depth video ###
         if self.video.counter.value == 0:
-            #print("===== first frame")
             # extract features map
-
-            print("inputs[:,[0]] ", inputs[:,[0]])
-            # context feature only on left
+            # context feature only on left [0]
             net, inp = self.__context_encoder(inputs[:,[0]])
 
             # definition of self net inp and fmap
             self.net, self.inp, self.fmap = net, inp, gmap
-            print("first definition of net inp and fmap")
-            print("self.net.shape : ", self.net.shape)
-            print("self.inp.shape : ", self.inp.shape)
-            print("self.fmap.shape : ", self.fmap.shape)
 
             # share data with all process
             # on recup image[0] left uniquement
             # gmap stereo features net et inp left context features
             # gmap [2, 128, 40, 64] inp [1, 128, 40, 64] net [1, 128, 40, 64]
             self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
-            print("self.net[0,0].shape : ", self.net[0,0].shape)
-            print("self.inp[0,0].shape : ", self.inp[0,0].shape)
 
+        ### not first frame process correlation ###
         ### only add new frame if there is enough motion ###
         else:                
             # index correlation volume meshgrid of the pixel coords for an image
@@ -109,56 +95,38 @@ class MotionFilter:
 
             # gmap new image et fmap previous
             
-            print("self.fmap.shape ", self.fmap.shape)
-            print("self.fmap[None,[0]] ", self.fmap[None,[0]].shape)
-
-            print("self.gmap.shape ", gmap.shape)
-            print("self.gmap[None,[0]] ", gmap[None,[0]].shape)
-
             # on construit un objet Corrblock en utilisant les feature maps de gauche [0] avec un batch size de 1 avec None et on applique la methode call avec (coords0) pour recuperer uniquement les correlations voulues
             # on a fmap gmap previous keyframe
             # on a gmap stereo feature current frame
             # on a [0] pour prendre que la gauche
             # on donne coords0 en arg donc on utilise direct la methode call de CorrBlock apres init
-            # corr [1, 1 ,196, 40, 64]
+            # corr [1, 1 ,196, 40, 64] 196 pour 49(7*7 patch)*4 lvl pyramid
             corr = CorrBlock(self.fmap[None,[0]], gmap[None,[0]])(coords0)
-            
-            print("corr.shape : ", corr.shape)
 
             # approximate flow magnitude using 1 update iteration
-            #print("===== compute 1 update for delta optical flow")
-
             # RAFT to get delta net inp and corr but no initial flow
 
-            print("self.net[None].shape ", self.net[None].shape)
-            print("self.inp[None].shape ", self.inp[None].shape)
+            # update prends en args
+            # net avec None pour batch size [1,128,40,64]
+            # inp avec None pour batch [1,128,40,64]
             _, delta, weight = self.update(self.net[None], self.inp[None], corr)
             
-            print("delta.shape ", delta.shape)
-
-            #print("delta.shape : ",delta.shape)
-
+            # we get delta [1,1,40,64,2]
+            
             # check motion magnitue / add new frame to video
             if delta.norm(dim=-1).mean().item() > self.thresh:
                 #print("===== enough motion to update video")
                 # reset count of frame with not enough motion
                 self.count = 0
-                # extract context features
+                # extract context features from left image
                 net, inp = self.__context_encoder(inputs[:,[0]])
                 # update net inp and fmap for next iteration
                 self.net, self.inp, self.fmap = net, inp, gmap
 
-                print("first definition of net inp and fmap")
-                print("self.net.shape : ", self.net.shape)
-                print("self.inp.shape : ", self.inp.shape)
-                print("self.fmap.shape : ", self.fmap.shape)
-
                 # update video with new frame tstamp frame index to update video counter
                 # None for pose will be estimated later
                 self.video.append(tstamp, image[0], None, None, depth, intrinsics / 8.0, gmap, net[0], inp[0])
-                print("self.net[0].shape : ", self.net[0].shape)
-                print("self.inp[0].shape : ", self.inp[0].shape)
-
+    
             else:
                 # update counter of frame with no enough motion
                 self.count += 1

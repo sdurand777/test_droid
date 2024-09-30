@@ -51,6 +51,9 @@ class DepthVideo:
     def get_lock(self):
         return self.counter.get_lock()
 
+
+
+    ## append launcher setter
     def __item_setter(self, index, item):
         if isinstance(index, int) and index >= self.counter.value:
             self.counter.value = index + 1
@@ -69,23 +72,20 @@ class DepthVideo:
             self.disps[index] = item[3]
 
         if item[4] is not None:
-            print("---------- depth item setter")
-            print("---------- depth before resize shape : ",item[4].shape)
             depth = item[4][3::8,3::8]
-
-            print("---------- depth resize shape : ",depth.shape)
             self.disps_sens[index] = torch.where(depth>0, 1.0/depth, depth)
-            #self.disps_sens[index] = torch.where((depth > 1) & (depth < 4), 1.0 / depth, depth)
-
         if item[5] is not None:
             self.intrinsics[index] = item[5]
 
+        # gmap set to fmap [2,128,40,64] pour stereo
         if len(item) > 6:
             self.fmaps[index] = item[6]
 
+        # net pour context encoder [1,128,40,64]
         if len(item) > 7:
             self.nets[index] = item[7]
 
+        # inp from context encoder [1,128,40,64]
         if len(item) > 8:
             self.inps[index] = item[8]
 
@@ -165,6 +165,7 @@ class DepthVideo:
 
 
 
+    # method to get distance between frame to optimize graph with this metric
     def distance(self, ii=None, jj=None, beta=0.3, bidirectional=True):
         """ frame distance metric """
         #print("---- frame distance metric to see if we add a new keyframe in frontend")
@@ -203,6 +204,7 @@ class DepthVideo:
 
 
 
+    # bundle adjustment performed in graph.update to update video poses
     def ba(self, target, weight, eta, ii, jj, t0=1, t1=None, itrs=2, lm=1e-4, ep=0.1, motion_only=False):
         """ dense bundle adjustment (DBA) """
 
@@ -220,14 +222,6 @@ class DepthVideo:
             # droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
             #     target, weight, eta, ii, jj, t0, t1, itrs, lm, ep, motion_only)
             #self.disps_sens = torch.zeros_like(self.disps)
-
-            print("----- video.ba")
-
-            print("self.poses.shape : ", self.poses.shape)
-            print("self.disps.shape : ", self.disps.shape)
-
-            print("target.shape : ", target.shape)
-            print("weight.shape : ", weight.shape)
 
             droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
                 target, weight, eta, ii, jj, t0, t1, itrs, lm, ep, motion_only)

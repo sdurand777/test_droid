@@ -168,6 +168,8 @@ class DroidFrontend:
         """ add edges, perform update """
         #print("+++++ update DroidFrontend")
 
+        import pdb; pdb.set_trace()
+
         self.count += 1
         self.t1 += 1
 
@@ -394,13 +396,13 @@ class DroidFrontend:
     def __initialize(self):
         """ initialize the SLAM system """
 
-        print("~~~~~~~~~~~~~ initialize SLAM system frontend")
+        import pdb; pdb.set_trace()
+
         self.t0 = 0
         self.t1 = self.video.counter.value
         
         frame_info = "Frame " + str(self.count) + " Keyframes " + str(self.t1 - 1) + " "
 
-        print("self.graph.target.shape ", self.graph.target.shape)
 
         # build initial target based on pose
         # initialize target and update net inp etc in add_factors for new edges for factorgraph from video
@@ -412,11 +414,6 @@ class DroidFrontend:
         print("video fmaps size : ", last_nonzero_index)
 
         self.graph.add_neighborhood_factors(self.t0, self.t1, r=3)
-
-        print("self.graph.target.shape ", self.graph.target.shape)
-        print("self.graph.ii.shape ", self.graph.ii.shape)
-        print("self.graph.net.shape ", self.graph.net.shape)
-        print("self.graph.inp.shape ", self.graph.inp.shape)
 
         # Étape 1 : Identifier les images non nulles
         non_null_indices = torch.any(self.video.images.view( self.video.images.shape[0], -1) != 0, dim=1)
@@ -443,7 +440,7 @@ class DroidFrontend:
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
 
-        # update target based on pose that have been optimized by update
+        # update graph edges based on poses optimized from update so we can add new constraint to optimized the graph edges
         self.graph.add_proximity_factors(0, 0, rad=2, nms=2, thresh=self.frontend_thresh, remove=False)
 
         #self.visualize_graph(frame_info+"INIT - Graph post add_proximity_factors", ii_0, jj_0)
@@ -503,12 +500,10 @@ class DroidFrontend:
         #print("+++++ frontend call")
         # do initialization
         if not self.is_initialized and self.video.counter.value == self.warmup:
-            print("+++++ frontend initialize : ", self.video.counter.value , " warmup  : ", self.warmup)
             self.__initialize()
             
         # do update
         elif self.is_initialized and self.t1 < self.video.counter.value:
-            print("+++++ frontend update self.t1 : ",self.t1," self.video.counter.value :  ",self.video.counter.value)
             self.__update()
 
         

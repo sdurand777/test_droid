@@ -83,6 +83,7 @@ class GraphAgg(nn.Module):
 class UpdateModule(nn.Module):
     def __init__(self):
         super(UpdateModule, self).__init__()
+        # 4 lvl pyramid * radius ** 2 pour le patch du lookup operator
         cor_planes = 4 * (2*3 + 1)**2
 
         self.corr_encoder = nn.Sequential(
@@ -96,7 +97,8 @@ class UpdateModule(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 64, 3, padding=1),
             nn.ReLU(inplace=True))
-
+        
+        # network to get the weight
         self.weight = nn.Sequential(
             nn.Conv2d(128, 128, 3, padding=1),
             nn.ReLU(inplace=True),
@@ -104,20 +106,23 @@ class UpdateModule(nn.Module):
             GradientClip(),
             nn.Sigmoid())
 
+        # network to get the delta
         self.delta = nn.Sequential(
             nn.Conv2d(128, 128, 3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 2, 3, padding=1),
             GradientClip())
 
+        # 128 for net 
+        # 128 + 128 + 64 for inp corr et flow
         self.gru = ConvGRU(128, 128+128+64)
+        # network for agg
         self.agg = GraphAgg()
 
 
     def forward(self, net, inp, corr, flow=None, ii=None, jj=None):
         """ RaftSLAM update operator """
 
-        #print("~~~~~~~ RaftSLAM update operator from updatemodule within droidnet")
         batch, num, ch, ht, wd = net.shape
 
         if flow is None:
@@ -133,20 +138,28 @@ class UpdateModule(nn.Module):
         # flow info
         flow = flow.view(batch*num, -1, ht, wd)
 
+        # pour faire passer corr de [1,196(49*4),40,64] en [1,128,40,64]
         corr = self.corr_encoder(corr)
+        # flow encoder to go from [1,4,40,64] a [1,64,40,64]
         flow = self.flow_encoder(flow)
+
+        # gru to compute net latent feature map
         net = self.gru(net, inp, corr, flow)
 
         ### update variables ###
+        # extract delta and weight
         delta = self.delta(net).view(*output_dim)
         weight = self.weight(net).view(*output_dim)
 
+        # just reshape tp [1,1,40,64,2]
         delta = delta.permute(0,1,3,4,2)[...,:2].contiguous()
+        # just reshape tp [1,1,40,64,2]
         weight = weight.permute(0,1,3,4,2)[...,:2].contiguous()
 
         net = net.view(*output_dim)
 
         if ii is not None:
+            # for graph
             eta, upmask = self.agg(net, ii.to(net.device))
             return net, delta, weight, eta, upmask
 

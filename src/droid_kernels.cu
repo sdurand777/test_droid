@@ -1015,6 +1015,7 @@ torch::Tensor accum_cuda(torch::Tensor data, torch::Tensor ix, torch::Tensor jx)
 __global__ void EEt6x6_kernel(
     const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> E,
     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> Q,
+
     const torch::PackedTensorAccessor32<long,2,torch::RestrictPtrTraits> idx,
     torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> S)
 {

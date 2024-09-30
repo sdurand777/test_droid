@@ -113,15 +113,8 @@ class FactorGraph:
         if not isinstance(jj, torch.Tensor):
             jj = torch.as_tensor(jj, dtype=torch.long, device=self.device)
 
-        # # remove duplicate edges
-        # print("ii ", ii)
-        # print("jj ", jj)
-
         # filter out edges already present in self.ii and self.jj
         ii, jj = self.__filter_repeated_edges(ii, jj)
-
-        # print("ii ", ii)
-        # print("jj ", jj)
 
         if ii.shape[0] == 0:
             return
@@ -130,10 +123,10 @@ class FactorGraph:
         if self.max_factors > 0 and self.ii.shape[0] + ii.shape[0] > self.max_factors \
                 and self.corr is not None and remove:
             ix = torch.arange(len(self.age))[torch.argsort(self.age).cpu()]
-            print("ix : ", ix)
             self.rm_factors(ix >= self.max_factors - ii.shape[0], store=True)
 
         # extract net from video datasets
+        # self.video.nets [512, 128, 40, 64] 512 buffer net lat'ent for convgry
         net = self.video.nets[ii].to(self.device).unsqueeze(0)
 
         # correlation volume for new edges
@@ -141,62 +134,28 @@ class FactorGraph:
             # camera 0 for left 1 for right if ii == jj in stereo case fmap2 use jj, 1 = ii, 1 so we use right and left cam
             c = (ii == jj).long()
 
-            print("c ", c)
-
+            # pour le cas stereo on a self video fmaps [512,2,126,40,64]
             fmap1 = self.video.fmaps[ii,0].to(self.device).unsqueeze(0)
             fmap2 = self.video.fmaps[jj,c].to(self.device).unsqueeze(0)
-
-            print("self.corr : ", self.corr)
-
-            # correlation
-
-            print("fmap1.shape : ", fmap1.shape)
-            print("fmap2.shape : ", fmap2.shape)
 
             # on def un objet Corrblock
             corr = CorrBlock(fmap1, fmap2)
 
-            print("corr ADD FACTORS")
-            print("len(self.ii) : ", len(self.ii))
-            if self.corr is not None:
-                print("len(self.corr.corr_pyramid[0]) ", len(self.corr.corr_pyramid[0]))
-                print("self.corr.corr_pyramid[0].shape ", self.corr.corr_pyramid[0].shape)
-
             self.corr = corr if self.corr is None else self.corr.cat(corr)
 
-            print("len(self.corr.corr_pyramid[0]) ", len(self.corr.corr_pyramid[0]))
-            print("self.corr.corr_pyramid[0].shape ", self.corr.corr_pyramid[0].shape)
-
-
+            # on recuperer les inputs de video
+            # self video inps [512,128,40,64]
             inp = self.video.inps[ii].to(self.device).unsqueeze(0)
             self.inp = inp if self.inp is None else torch.cat([self.inp, inp], 1)
 
-            print("self.inp.shape ", self.inp.shape)
-
-            #time.sleep(10)
-
-
-        # INITIAL GUESS OF TARGET AND WEIGHT BASED ON NEW GRAPH 
         with torch.cuda.amp.autocast(enabled=False):
+            # on utilise les poses dans video pour reproject
             target, _ = self.video.reproject(ii, jj)
             weight = torch.zeros_like(target)
 
         # ajout au graph existant
         self.ii = torch.cat([self.ii, ii], 0)
         self.jj = torch.cat([self.jj, jj], 0)
-
-        # print("FINAL EDGES AFTER ADD FACTORS")
-        #
-        # print("ii : ", ii)
-        # print("jj : ", jj)
-        #
-        # print("self.ii : ", self.ii)
-        # print("self.jj : ", self.jj)
-        #
-        # print("self.jj[self.ii == 0]", self.jj[self.ii == 0])
-        # print("self.jj[self.ii == 1]", self.jj[self.ii == 1])
-        # print("self.jj[self.ii == 2]", self.jj[self.ii == 2])
-        # print("self.jj[self.ii == 3]", self.jj[self.ii == 3])
 
         self.age = torch.cat([self.age, torch.zeros_like(ii)], 0)
 
@@ -276,62 +235,28 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        # print("+++ factor graph update operator")
-        #
-        # print("self.ii : ",self.ii)
-        # print("self.jj : ",self.jj)
-
-        # print("t0 : ",t0)
-        # print("t1 : ",t1)
-        # print("itrs : ",itrs)
+        import pdb; pdb.set_trace()
 
         # motion features
         with torch.cuda.amp.autocast(enabled=False):
-            # initial target guess based on poses
+            # initial target guess based on poses from video
             coords1, mask = self.video.reproject(self.ii, self.jj)
 
-            print("self.ii.length : ", self.ii.__len__)
-            print("coords1.shape : ", coords1.shape)
-
-            # motion flow initial guess for RAFT
+            # motion flow initial guess for RAFT self.target define in add_factors
             motn = torch.cat([coords1 - self.coords0, self.target - coords1], dim=-1)
+            # reshape motn from [1,22,40,64,4] tp [1,22,4,40,64]
             motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
         
         # correlation features lookup with coords1
         # Call CorrBlock_call method to lookup within corr
         
-        print("self.corr.num_blocks ", self.corr.num_blocks)
-
-        print("len(self.corr.corr_pyramid[0]) ", len(self.corr.corr_pyramid[0]))
-        print("self.corr.corr_pyramid[0].shape ", self.corr.corr_pyramid[0].shape)
-
-        # print("len(self.corr.corr_pyramid) ", len(self.corr.corr_pyramid))
-        # print("self.corr.corr_pyramid[0].shape ", self.corr.corr_pyramid[0].shape)
-        #
-        # print('self.corr ', self.corr)
-
+        # shape [1, number of edges in graph, 196, 40, 64]
         corr = self.corr(coords1)
 
-        print("corr.shape ", corr.shape)
-
-        # RAFT
-#        print("+++ RAFT")
-        
-        print("--------- RAFT FROM GRAPH UPDATE -----------")
-
-        # update_op we use feature map of all edges in the graph !
-        print('self.net.shape ', self.net.shape)
-        print('self.inp.shape ', self.inp.shape)
-
+        # update_op we use feature map of all edges in the graph ! its big permet de update net
+        # self.net [1, number of edges , 128, 40, 64]
         self.net, delta, weight, damping, upmask = \
             self.update_op(self.net, self.inp, corr, motn, self.ii, self.jj)
-
-
-        print("self.net.shape ", self.net.shape)
-        print("delta.shape ", delta.shape)
-
-        # print("self.ii : ",self.ii)
-        # print("self.jj : ",self.jj)
 
         if t0 is None:
             t0 = max(1, self.ii.min().item()+1)
@@ -339,6 +264,7 @@ class FactorGraph:
         # TARGET AND WEIGHT FROM RAFT USED FOR BA
         with torch.cuda.amp.autocast(enabled=False):
             # refined target with RAFT delta
+            # target [1,22,40,64,2]
             self.target = coords1 + delta.to(dtype=torch.float)
             self.weight = weight.to(dtype=torch.float)
 
@@ -358,21 +284,15 @@ class FactorGraph:
 
             damping = .2 * self.damping[torch.unique(ii)].contiguous() + EP
 
+            # reshape to [22 2 40 64] 2 number of edges may be different 
             target = target.view(-1, ht, wd, 2).permute(0,3,1,2).contiguous()
+            # same shape as target
             weight = weight.view(-1, ht, wd, 2).permute(0,3,1,2).contiguous()
-
-            # dense bundle adjustment
-
-            # print("# t0 from factor graph : ",max(1, self.ii.min().item()+1))
-            # print("# t1 from factor graph : ",max(ii.max().item(), jj.max().item()) + 1)
 
             # BUNDLE ADJUSTMENT
             self.video.ba(target, weight, damping, ii, jj, t0, t1, 
                 itrs=itrs, lm=1e-4, ep=0.1, motion_only=motion_only)
         
-            # print("self.ii : ",self.ii)
-            # print("self.jj : ",self.jj)
-
             if self.upsample:
                 self.video.upsample(torch.unique(self.ii), upmask)
 
@@ -438,8 +358,6 @@ class FactorGraph:
     def add_neighborhood_factors(self, t0, t1, r=3):
         """ add edges between neighboring frames within radius r """
 
-        print("~~~ 'add_neighborhood_factors'")
-
         ii, jj = torch.meshgrid(torch.arange(t0,t1), torch.arange(t0,t1))
         ii = ii.reshape(-1).to(dtype=torch.long, device=self.device)
         jj = jj.reshape(-1).to(dtype=torch.long, device=self.device)
@@ -459,7 +377,7 @@ class FactorGraph:
     def add_proximity_factors(self, t0=0, t1=0, rad=2, nms=2, beta=0.25, thresh=16.0, remove=False):
         """ add edges to the factor graph based on distance """
 
-        print("PROXIMITY_FACTORS")
+        import pdb; pdb.set_trace()
 
         t = self.video.counter.value
 
@@ -478,8 +396,6 @@ class FactorGraph:
         # compute distance based on disparity values and poses update before to use BA and get poses estimates and disparity estimates
         # used comme un flag pour parcourir les aretes plus rapidement et garder les aretes les plus pertinentes
         d = self.video.distance(ii, jj, beta=beta)
-        print("add_proximity_factors t0 ", t0, " t1 ", t1, " t ", t)
-        print("d.shape : ", d.shape)
 
 # # Reshaper le tensor en une matrice 8x8
 #         d_reshaped = d.view(8, 8)
@@ -487,30 +403,16 @@ class FactorGraph:
 # # Afficher la matrice
 #         print("d_reshaped : \n", d_reshaped)
 
-
-
-        print("ii \n", ii)
-        print("jj \n", jj)
-
-        print("self.ii \n", self.ii)
-        print("self.jj \n", self.jj)
-
         # adjust d values according to parameters
         d[ii - rad < jj] = np.inf # equivaut a ii - jj < rad on veut des i plus petits ou rad sup que j
         d[d > 100] = np.inf # si d trop grand on enleve aussi
 
-        print("d : ", d)
-
         ii1 = torch.cat([self.ii, self.ii_bad, self.ii_inac], 0)
         jj1 = torch.cat([self.jj, self.jj_bad, self.jj_inac], 0)
-
-        print("ii1 : \n", ii1)
-        print("jj1 : \n", jj1)
 
         # attention on parcouirs pas les ii jj mais les indices self.ii
         # ce code permete elimination des frames trop proches
         for i, j in zip(ii1.cpu().numpy(), jj1.cpu().numpy()):
-            print("(i,j) : ", i,  " ", j)
             for di in range(-nms, nms+1):
                 for dj in range(-nms, nms+1):
                     if abs(di) + abs(dj) <= max(min(abs(i-j)-2, nms), 0):
@@ -518,11 +420,7 @@ class FactorGraph:
                         j1 = j + dj
 
                         if (t0 <= i1 < t) and (t1 <= j1 < t):
-                            print("(i,j) deleted : ", i,  " ", j)
-                            print("d value : ", d[(i1-t0)*(t-t1) + (j1-t1)])
                             d[(i1-t0)*(t-t1) + (j1-t1)] = np.inf
-
-        print("d post nms : ", d)
 
         es = []
         for i in range(t0, t):
@@ -540,18 +438,10 @@ class FactorGraph:
                 es.append((j,i))
                 d[(i-t0)*(t-t1) + (j-t1)] = np.inf
 
-        print("d post es : ", d)
-
         ix = torch.argsort(d)
-
-        print("ix : ", ix)
-        print("threash ; ", thresh)
-        print("self.max_factors : ", self.max_factors)
-        print("es : ", es)
 
         for k in ix:
             if d[k].item() > thresh:
-                print("d[k].item continue : ", d[k].item())
                 continue
 
             if len(es) > self.max_factors:
@@ -559,8 +449,6 @@ class FactorGraph:
 
             i = ii[k]
             j = jj[k]
-            
-            print("k ", k, " i ", i, " j ", j)
             
             # bidirectional
             es.append((i, j))
@@ -573,21 +461,10 @@ class FactorGraph:
                         i1 = i + di
                         j1 = j + dj
 
-                        print("(i1,j1) ", i1, " ", j1)    
-
                         if (t0 <= i1 < t) and (t1 <= j1 < t):
                             d[(i1-t0)*(t-t1) + (j1-t1)] = np.inf
 
-            print("d post nms bis : ", d)
-
-
-        print("es : ", es)
         ii, jj = torch.as_tensor(es, device=self.device).unbind(dim=-1)
-
-        print("ii : ", ii)
-        print("jj : ", jj)
-
-        print("END OF ADD_PROXIMITY_FACTORS")
 
         self.add_factors(ii, jj, remove)
 
