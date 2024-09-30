@@ -173,9 +173,6 @@ class DroidFrontend:
         self.count += 1
         self.t1 += 1
 
-        print("self.graph.ii : \n", self.graph.ii)
-        print("self.graph.jj : \n", self.graph.jj)
-
         frame_info = "Frame " + str(self.count) + " Keyframes " + str(self.t1 - 1) + " "
         
         #self.visualize_graph(frame_info+"UPDATE - Graph")
@@ -195,16 +192,9 @@ class DroidFrontend:
                 ii_0 = self.graph.ii.clone()
                 jj_0 = self.graph.jj.clone()
 
-        print("self.graph.ii : \n", self.graph.ii)
-        print("self.graph.jj : \n", self.graph.jj)
-
-
         # update graph with proximity factors init target and weight based on initial guess of pose and disp of previous iteration using video.reproject
         self.graph.add_proximity_factors(self.t1-5, max(self.t1-self.frontend_window, 0), 
             rad=self.frontend_radius, nms=self.frontend_nms, thresh=self.frontend_thresh, beta=self.beta, remove=True)
-
-        print("self.graph.ii : \n", self.graph.ii)
-        print("self.graph.jj : \n", self.graph.jj)
 
         #self.visualize_graph(frame_info+"UPDATE - Graph post add_proximity_factors", ii_0, jj_0)
         #self.visualize_projection(frame_info+"UPDATE - Graph post add_proximity_factors")
@@ -229,9 +219,8 @@ class DroidFrontend:
 
         # set initial pose for next frame
         poses = SE3(self.video.poses)
+        # utilisation de la distance metric entre les frames pour decider ajout ou remplacement derniere keyframe
         d = self.video.distance([self.t1-3], [self.t1-2], beta=self.beta, bidirectional=True)
-        print("frontend.__update t0 ", self.t1-3, " t1 ", self.t1-2)
-        print("d.shape : ", d.shape)
 
         # not enoough motion previous can be replaced by current t1 - 1
         if d.item() < self.keyframe_thresh:
@@ -502,7 +491,7 @@ class DroidFrontend:
         if not self.is_initialized and self.video.counter.value == self.warmup:
             self.__initialize()
             
-        # do update
+        # do update on compare self.t1 au self.video.counter.value updated dans la methode append dans le track de motion_filter
         elif self.is_initialized and self.t1 < self.video.counter.value:
             self.__update()
 
