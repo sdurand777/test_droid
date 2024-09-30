@@ -215,14 +215,6 @@ class DepthVideo:
             if t1 is None:
                 t1 = max(ii.max().item(), jj.max().item()) + 1
 
-            # print("## t0 : ",t0)
-            # print("## t1 : ",t1)
-
-            #print("~~~~~~ droidbackends.ba")
-            # droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
-            #     target, weight, eta, ii, jj, t0, t1, itrs, lm, ep, motion_only)
-            #self.disps_sens = torch.zeros_like(self.disps)
-
             droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
                 target, weight, eta, ii, jj, t0, t1, itrs, lm, ep, motion_only)
 

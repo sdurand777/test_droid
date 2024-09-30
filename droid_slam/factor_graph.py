@@ -104,7 +104,7 @@ class FactorGraph:
     def add_factors(self, ii, jj, remove=False):
         """ add edges to factor graph """
 
-        print("======= 'add edges to factor graph'")
+        import pdb; pdb.set_trace()
 
         # juste verifie si on recoit bien des tensors sinon conversion
         if not isinstance(ii, torch.Tensor):
@@ -381,13 +381,8 @@ class FactorGraph:
 
         t = self.video.counter.value
 
-        print("t : ", t, " t0 ", t0, " t1 ", t1)
-
         ix = torch.arange(t0, t)
         jx = torch.arange(t1, t)
-
-        print("ix : ", ix)
-        print("jx : ", jx)
 
         ii, jj = torch.meshgrid(ix, jx)
         ii = ii.reshape(-1)
