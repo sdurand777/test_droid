@@ -2,5 +2,8 @@ source accessor_printer.py
 source gpu_printer.py
 source gpu_float_printer.py
 set breakpoint pending on
-break src/correlation_kernels.cu:35
-break src/correlation_kernels.cu:148
+break src/droid_kernels.cu:1350
+break src/droid_kernels.cu:196
+
+#break src/correlation_kernels.cu:35
+#break src/correlation_kernels.cu:148

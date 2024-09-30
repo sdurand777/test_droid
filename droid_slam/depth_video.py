@@ -134,8 +134,6 @@ class DepthVideo:
         return ii, jj
 
 
-
-
     def upsample(self, ix, mask):
         """ upsample disparity """
 
@@ -165,10 +163,11 @@ class DepthVideo:
 
 
 
-    # method to get distance between frame to optimize graph with this metric
+    # method to get distance between frame to optimize graph with this metric or add or replace KF in frontend update method frame_distance is on GPU
     def distance(self, ii=None, jj=None, beta=0.3, bidirectional=True):
         """ frame distance metric """
-        #print("---- frame distance metric to see if we add a new keyframe in frontend")
+
+        import pdb; pdb.set_trace()
 
         return_matrix = False
         if ii is None:
@@ -208,7 +207,8 @@ class DepthVideo:
     def ba(self, target, weight, eta, ii, jj, t0=1, t1=None, itrs=2, lm=1e-4, ep=0.1, motion_only=False):
         """ dense bundle adjustment (DBA) """
 
-        #print("================= DBA")
+        import pdb; pdb.set_trace()
+
         with self.get_lock():
 
             # [t0, t1] window of bundle adjustment optimization

@@ -1129,6 +1129,9 @@ __global__ void EvT6x1_kernel(
   }
 }
 
+
+
+
 class SparseBlock {
   public:
 
@@ -1234,6 +1237,8 @@ class SparseBlock {
 };
 
 
+
+
 SparseBlock schur_block(torch::Tensor E,
                         torch::Tensor Q,
                         torch::Tensor w,
@@ -1324,6 +1329,8 @@ SparseBlock schur_block(torch::Tensor E,
 
   return A;
 }
+
+
 
 
 std::vector<torch::Tensor> ba_cuda(
@@ -1456,7 +1463,6 @@ std::vector<torch::Tensor> ba_cuda(
 
 
 
-
 torch::Tensor frame_distance_cuda(
     torch::Tensor poses,
     torch::Tensor disps,
@@ -1480,6 +1486,8 @@ torch::Tensor frame_distance_cuda(
 
   return dist;
 }
+
+
 
 
 std::vector<torch::Tensor> projmap_cuda(
@@ -1510,6 +1518,8 @@ std::vector<torch::Tensor> projmap_cuda(
 }
 
 
+
+
 torch::Tensor depth_filter_cuda(
     torch::Tensor poses,
     torch::Tensor disps,
@@ -1535,6 +1545,8 @@ torch::Tensor depth_filter_cuda(
 
   return counter;
 }
+
+
 
 
 torch::Tensor iproj_cuda(

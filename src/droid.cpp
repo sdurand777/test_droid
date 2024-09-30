@@ -100,19 +100,30 @@ std::vector<torch::Tensor> ba(
     const int iterations,
     const float lm,
     const float ep,
-    const bool motion_only) {
+    const bool motion_only) 
+{
 
-  CHECK_INPUT(targets);
-  CHECK_INPUT(weights);
-  CHECK_INPUT(poses);
-  CHECK_INPUT(disps);
-  CHECK_INPUT(intrinsics);
-  CHECK_INPUT(disps_sens);
-  CHECK_INPUT(ii);
-  CHECK_INPUT(jj);
+    CHECK_INPUT(targets);
+    CHECK_INPUT(weights);
+    CHECK_INPUT(poses);
+    CHECK_INPUT(disps);
+    CHECK_INPUT(intrinsics);
+    CHECK_INPUT(disps_sens);
+    CHECK_INPUT(ii);
+    CHECK_INPUT(jj);
 
-  return ba_cuda(poses, disps, intrinsics, disps_sens, targets, weights,
-                 eta, ii, jj, t0, t1, iterations, lm, ep, motion_only);
+    // conversion to accessor
+    auto targets_accessor = targets.packed_accessor32<float,4,torch::RestrictPtrTraits>();
+    auto weights_accessor = weights.packed_accessor32<float,4,torch::RestrictPtrTraits>();
+    auto poses_accessor =  poses.packed_accessor32<float,2,torch::RestrictPtrTraits>();
+    auto disps_accessor = disps.packed_accessor32<float,3,torch::RestrictPtrTraits>();
+    auto intrinsics_accessor = intrinsics.packed_accessor32<float,1,torch::RestrictPtrTraits>();
+    auto ii_accessor = ii.packed_accessor32<long,1,torch::RestrictPtrTraits>();
+    auto jj_accessor = jj.packed_accessor32<long,1,torch::RestrictPtrTraits>();
+
+
+    return ba_cuda(poses, disps, intrinsics, disps_sens, targets, weights,
+                    eta, ii, jj, t0, t1, iterations, lm, ep, motion_only);
 
 }
 
