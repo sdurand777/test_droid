@@ -204,6 +204,7 @@ class DepthVideo:
 
 
     # bundle adjustment performed in graph.update to update video poses
+    # eta c'est le damping dans factorgraph
     def ba(self, target, weight, eta, ii, jj, t0=1, t1=None, itrs=2, lm=1e-4, ep=0.1, motion_only=False):
         """ dense bundle adjustment (DBA) """
 
