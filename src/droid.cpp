@@ -261,7 +261,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   // bundle adjustment kernels
   m.def("ba", &ba, "bundle adjustment");
   m.def("frame_distance", &frame_distance, "frame_distance");
-  m.def("projmap", &projmap, "projmap");
+  //m.def("projmap", &projmap, "projmap");
   m.def("depth_filter", &depth_filter, "depth_filter");
   m.def("iproj", &iproj, "back projection");
 

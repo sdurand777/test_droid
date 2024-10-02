@@ -219,6 +219,7 @@ expSE3(const float *xi, float* t, float* q) {
 
 
 
+// build Hessian rhs vector 
 __global__ void projective_transform_kernel(
         const torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> target,
         const torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> weight,
@@ -235,7 +236,10 @@ __global__ void projective_transform_kernel(
         torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> bz)
 {
     // recuperation indices block et thread
+    // on parallelize
+    // chaque block_id correspond a un edge du graph
     const int block_id = blockIdx.x;
+    // les threads sont utilise au sein du block pour faire les operations en paralleles
     const int thread_id = threadIdx.x;
 
     // size disparite
@@ -268,6 +272,7 @@ __global__ void projective_transform_kernel(
 
     // stereo frames same id
     if (ix == jx) {
+        // stereo cas we fix the relative transformation between left and right
         if (thread_id == 0) {
             tij[0] =  -0.1;
             tij[1] =     0;
@@ -282,11 +287,15 @@ __global__ void projective_transform_kernel(
     else {
 
         // load poses from global memory for two different lefts
+        // poses 7 dimensional vector translation quaternion
+
+        // collect translations for frame i and j
         if (thread_id < 3) {
             ti[thread_id] = poses[ix][thread_id];
             tj[thread_id] = poses[jx][thread_id];
         }
 
+        // collect quaternion for frame i and j
         if (thread_id < 4) {
             qi[thread_id] = poses[ix][thread_id+3];
             qj[thread_id] = poses[jx][thread_id+3];
@@ -321,10 +330,10 @@ __global__ void projective_transform_kernel(
     float* Jj = &Jx[6];
 
     // hessians hij symetrique donc uniquement la moitie
-    // hessiens de 12 donc uniquement pour les poses ?
+    // hessiens de 12 donc uniquement pour les poses
     float hij[12*(12+1)/2];
 
-    // vector to build the hessian problem
+    // vector to build the hessian problem the right handside vector - J r where here vi and vj are the pose part for frame i and j
     float vi[6], vj[6];
 
     int l;
@@ -341,6 +350,7 @@ __global__ void projective_transform_kernel(
 
     __syncthreads();
 
+    // we loop over all pixels ht*wd
     GPU_1D_KERNEL_LOOP(k, ht*wd) {
 
         // pixel within ht wd image
@@ -349,6 +359,8 @@ __global__ void projective_transform_kernel(
 
         const float u = static_cast<float>(j);
         const float v = static_cast<float>(i);
+
+        // frame i tha t we project onto frame j 
 
         // homogenous coordinates for each pixel
         Xi[0] = (u - cx) / fx;
@@ -359,25 +371,29 @@ __global__ void projective_transform_kernel(
         // transform homogenous point Xi to Xj using tij and qij soit les poses initi guess qui vont etre opitimises par le BA
         actSE3(tij, qij, Xi, Xj);
 
+        // we het the 3D data from Xj
         const float x = Xj[0];
         const float y = Xj[1];
         const float h = Xj[3];
 
-        // get depth from Xj
+        // get depth from Xj and check value convert to inverse depth
         const float d = (Xj[2] < MIN_DEPTH) ? 0.0 : 1.0 / Xj[2];
+
+        // squered value for latter
         const float d2 = d * d;
 
-        // confidence update
+        // confidence update based on reprojected Xj weight are from update operator convgry to weight the revised flow predicted by the convgru opertar target
         float wu = (Xj[2] < MIN_DEPTH) ? 0.0 : .001 * weight[block_id][0][i][j];
         float wv = (Xj[2] < MIN_DEPTH) ? 0.0 : .001 * weight[block_id][1][i][j];
 
-        // reprojection distance between target and reprojection based on estimated disp and pose
+        // reprojection distance between target predicted (or revised with delta to update coords) by the convgru and reprojection based on estimated disp and pose
         const float ru = target[block_id][0][i][j] - (fx * d * x + cx);
         const float rv = target[block_id][1][i][j] - (fy * d * y + cy);
 
         // x - coordinate
 
         // compute jacobian
+        // h ici est un facteur echelle qui doir valoir 1
         Jj[0] = fx * (h*d);
         Jj[1] = fx * 0;
         Jj[2] = fx * (-x*h*d2);
@@ -390,12 +406,12 @@ __global__ void projective_transform_kernel(
 
         // hessian only for depth or disparity
         Cii[block_id][k] = wu * Jz * Jz;
-        // bias for depth
+        // bias for depth for th right hand side vector of the optimization problem
         bz[block_id][k] = wu * ru * Jz;
 
         if (ix == jx) wu = 0;
 
-        // compute Ji tangent space or lie algebra element at i
+        // since we have Jj we compute Ji with the adjoint
         adjSE3(tij, qij, Jj, Ji);
         for (int n=0; n<6; n++) Ji[n] *= -1;
 
@@ -410,9 +426,11 @@ __global__ void projective_transform_kernel(
 
         // blocks cross pose depth
         for (int n=0; n<6; n++) {
+            // vector for poses right hand side
             vi[n] += wu * ru * Ji[n];
             vj[n] += wu * ru * Jj[n];
 
+            // block of hessian cross pose depth
             Eii[block_id][n][k] = wu * Jz * Ji[n];
             Eij[block_id][n][k] = wu * Jz * Jj[n];
         }
@@ -429,9 +447,13 @@ __global__ void projective_transform_kernel(
         Jj[3] = fy * (-1 - y*y*d2);
         Jj[4] = fy * (x*y*d2);
         Jj[5] = fy * (x*d);
-
+        
+        // jocobien suivant depth
         Jz = fy * (tij[1] * d - tij[2] * (y * d2));
+
+        // depth hessian block
         Cii[block_id][k] += wv * Jz * Jz;
+        // bias for right hand side vector
         bz[block_id][k] += wv * rv * Jz;
 
         if (ix == jx) wv = 0;
@@ -451,9 +473,11 @@ __global__ void projective_transform_kernel(
 
         // blocks cross pose and depth
         for (int n=0; n<6; n++) {
+            // right hand side vector
             vi[n] += wv * rv * Ji[n];
             vj[n] += wv * rv * Jj[n];
 
+            // cross block for the hessian
             Eii[block_id][n][k] += wv * Jz * Ji[n];
             Eij[block_id][n][k] += wv * Jz * Jj[n];
         }
@@ -492,6 +516,7 @@ __global__ void projective_transform_kernel(
 
             if (threadIdx.x == 0) {
                 if (n<6 && m<6) {
+                    // for symetry
                     Hs[0][block_id][n][m] = sdata[0];
                     Hs[0][block_id][m][n] = sdata[0];
                 }
@@ -611,144 +636,144 @@ __global__ void projmap_kernel(
 
 // method pour recuperer la distance entre les frames
 __global__ void frame_distance_kernel(
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
-    const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
-    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ii,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> jj,
-    torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> dist,
-    const float beta) {
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
+        const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
+        const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ii,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> jj,
+        torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> dist,
+        const float beta) {
 
-  const int block_id = blockIdx.x;
-  const int thread_id = threadIdx.x;
+    const int block_id = blockIdx.x;
+    const int thread_id = threadIdx.x;
 
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
+    const int ht = disps.size(1);
+    const int wd = disps.size(2);
 
-  __shared__ int ix;
-  __shared__ int jx;
+    __shared__ int ix;
+    __shared__ int jx;
 
-  __shared__ float fx;
-  __shared__ float fy;
-  __shared__ float cx;
-  __shared__ float cy;
+    __shared__ float fx;
+    __shared__ float fy;
+    __shared__ float cx;
+    __shared__ float cy;
 
-  __shared__ float ti[3], tj[3], tij[3];
-  __shared__ float qi[4], qj[4], qij[4];
+    __shared__ float ti[3], tj[3], tij[3];
+    __shared__ float qi[4], qj[4], qij[4];
 
-  // load intrinsics from global memory
-  if (thread_id == 0) {
-    ix = static_cast<int>(ii[block_id]);
-    jx = static_cast<int>(jj[block_id]);
-    fx = intrinsics[0];
-    fy = intrinsics[1];
-    cx = intrinsics[2];
-    cy = intrinsics[3];
-  }
-
-  __syncthreads();
-
-
-  //points 
-  float Xi[4];
-  float Xj[4];
-
-  __shared__ float accum[THREADS]; accum[thread_id] = 0;
-  __shared__ float valid[THREADS]; valid[thread_id] = 0;
-  __shared__ float total[THREADS]; total[thread_id] = 0;
-
-  __syncthreads();
-
-  for (int n=0; n<1; n++) {
-
-    if (thread_id < 3) {
-      ti[thread_id] = poses[ix][thread_id];
-      tj[thread_id] = poses[jx][thread_id];
-    }
-
-    if (thread_id < 4) {
-      qi[thread_id] = poses[ix][thread_id+3];
-      qj[thread_id] = poses[jx][thread_id+3];
+    // load intrinsics from global memory
+    if (thread_id == 0) {
+        ix = static_cast<int>(ii[block_id]);
+        jx = static_cast<int>(jj[block_id]);
+        fx = intrinsics[0];
+        fy = intrinsics[1];
+        cx = intrinsics[2];
+        cy = intrinsics[3];
     }
 
     __syncthreads();
 
 
-    relSE3(ti, qi, tj, qj, tij, qij);
+    //points 
+    float Xi[4];
+    float Xj[4];
 
-    float d, du, dv;
-
-    GPU_1D_KERNEL_LOOP(k, ht*wd) {
-      const int i = k / wd;
-      const int j = k % wd;
-
-      const float u = static_cast<float>(j);
-      const float v = static_cast<float>(i);
-
-
-      // if (disps[ix][i][j] < 0.01) {
-      //   continue;
-      // }
-      
-      // homogenous coordinates
-      Xi[0] = (u - cx) / fx;
-      Xi[1] = (v - cy) / fy;
-      Xi[2] = 1;
-      Xi[3] = disps[ix][i][j];
-
-      // transform homogenous point
-      actSE3(tij, qij, Xi, Xj);
-
-      du = fx * (Xj[0] / Xj[2]) + cx - u;
-      dv = fy * (Xj[1] / Xj[2]) + cy - v;
-      d = sqrtf(du*du + dv*dv);
-
-      total[threadIdx.x] += beta;
-      
-      if (Xj[2] > MIN_DEPTH) {
-        accum[threadIdx.x] += beta * d;
-        valid[threadIdx.x] += beta;
-      }
-
-      Xi[0] = (u - cx) / fx;
-      Xi[1] = (v - cy) / fy;
-      Xi[2] = 1;
-      Xi[3] = disps[ix][i][j];
-
-      Xj[0] = Xi[0] + Xi[3] * tij[0];
-      Xj[1] = Xi[1] + Xi[3] * tij[1];
-      Xj[2] = Xi[2] + Xi[3] * tij[2];
-
-      du = fx * (Xj[0] / Xj[2]) + cx - u;
-      dv = fy * (Xj[1] / Xj[2]) + cy - v;
-      d = sqrtf(du*du + dv*dv);
-
-      total[threadIdx.x] += (1 - beta);
-      
-      if (Xj[2] > MIN_DEPTH) {
-        accum[threadIdx.x] += (1 - beta) * d;
-        valid[threadIdx.x] += (1 - beta);
-      }
-    }
-
-    if (threadIdx.x == 0) {
-      int tmp = ix;
-      ix = jx;
-      jx = tmp;
-    }
+    __shared__ float accum[THREADS]; accum[thread_id] = 0;
+    __shared__ float valid[THREADS]; valid[thread_id] = 0;
+    __shared__ float total[THREADS]; total[thread_id] = 0;
 
     __syncthreads();
 
-  }
-  __syncthreads(); blockReduce(accum);
-  __syncthreads(); blockReduce(total);
-  __syncthreads(); blockReduce(valid);
+    for (int n=0; n<1; n++) {
 
-  __syncthreads();
+        if (thread_id < 3) {
+            ti[thread_id] = poses[ix][thread_id];
+            tj[thread_id] = poses[jx][thread_id];
+        }
 
-  if (thread_id == 0) {
-    dist[block_id] = (valid[0] / (total[0] + 1e-8) < 0.75) ? 1000.0 : accum[0] / valid[0];
-  }
+        if (thread_id < 4) {
+            qi[thread_id] = poses[ix][thread_id+3];
+            qj[thread_id] = poses[jx][thread_id+3];
+        }
+
+        __syncthreads();
+
+
+        relSE3(ti, qi, tj, qj, tij, qij);
+
+        float d, du, dv;
+
+        GPU_1D_KERNEL_LOOP(k, ht*wd) {
+            const int i = k / wd;
+            const int j = k % wd;
+
+            const float u = static_cast<float>(j);
+            const float v = static_cast<float>(i);
+
+
+            // if (disps[ix][i][j] < 0.01) {
+            //   continue;
+            // }
+
+            // homogenous coordinates
+            Xi[0] = (u - cx) / fx;
+            Xi[1] = (v - cy) / fy;
+            Xi[2] = 1;
+            Xi[3] = disps[ix][i][j];
+
+            // transform homogenous point
+            actSE3(tij, qij, Xi, Xj);
+
+            du = fx * (Xj[0] / Xj[2]) + cx - u;
+            dv = fy * (Xj[1] / Xj[2]) + cy - v;
+            d = sqrtf(du*du + dv*dv);
+
+            total[threadIdx.x] += beta;
+
+            if (Xj[2] > MIN_DEPTH) {
+                accum[threadIdx.x] += beta * d;
+                valid[threadIdx.x] += beta;
+            }
+
+            Xi[0] = (u - cx) / fx;
+            Xi[1] = (v - cy) / fy;
+            Xi[2] = 1;
+            Xi[3] = disps[ix][i][j];
+
+            Xj[0] = Xi[0] + Xi[3] * tij[0];
+            Xj[1] = Xi[1] + Xi[3] * tij[1];
+            Xj[2] = Xi[2] + Xi[3] * tij[2];
+
+            du = fx * (Xj[0] / Xj[2]) + cx - u;
+            dv = fy * (Xj[1] / Xj[2]) + cy - v;
+            d = sqrtf(du*du + dv*dv);
+
+            total[threadIdx.x] += (1 - beta);
+
+            if (Xj[2] > MIN_DEPTH) {
+                accum[threadIdx.x] += (1 - beta) * d;
+                valid[threadIdx.x] += (1 - beta);
+            }
+        }
+
+        if (threadIdx.x == 0) {
+            int tmp = ix;
+            ix = jx;
+            jx = tmp;
+        }
+
+        __syncthreads();
+
+    }
+    __syncthreads(); blockReduce(accum);
+    __syncthreads(); blockReduce(total);
+    __syncthreads(); blockReduce(valid);
+
+    __syncthreads();
+
+    if (thread_id == 0) {
+        dist[block_id] = (valid[0] / (total[0] + 1e-8) < 0.75) ? 1000.0 : accum[0] / valid[0];
+    }
 }
 
 
@@ -759,465 +784,483 @@ __global__ void frame_distance_kernel(
 
 
 __global__ void depth_filter_kernel(
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
-    const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
-    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> inds,
-    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> thresh,
-    torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> counter)
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
+        const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
+        const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> inds,
+        const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> thresh,
+        torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> counter)
 {
 
-  const int block_id = blockIdx.x;
-  const int neigh_id = blockIdx.y;
-  const int index = blockIdx.z * blockDim.x + threadIdx.x;
+    const int block_id = blockIdx.x;
+    const int neigh_id = blockIdx.y;
+    const int index = blockIdx.z * blockDim.x + threadIdx.x;
 
-  // if (threadIdx.x == 0) {
-  //   printf("%d %d %d %d\n", blockIdx.x, blockIdx.y, blockDim.x, threadIdx.x);
-  // }
+    // if (threadIdx.x == 0) {
+    //   printf("%d %d %d %d\n", blockIdx.x, blockIdx.y, blockDim.x, threadIdx.x);
+    // }
 
-  const int num = disps.size(0);
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
+    const int num = disps.size(0);
+    const int ht = disps.size(1);
+    const int wd = disps.size(2);
 
-  __shared__ int ix;
-  __shared__ int jx;
+    __shared__ int ix;
+    __shared__ int jx;
 
-  __shared__ float fx;
-  __shared__ float fy;
-  __shared__ float cx;
-  __shared__ float cy;
+    __shared__ float fx;
+    __shared__ float fy;
+    __shared__ float cx;
+    __shared__ float cy;
 
-  __shared__ float ti[3], tj[3], tij[3];
-  __shared__ float qi[4], qj[4], qij[4];
+    __shared__ float ti[3], tj[3], tij[3];
+    __shared__ float qi[4], qj[4], qij[4];
 
-  if (threadIdx.x == 0) {
-    ix = static_cast<int>(inds[block_id]);
-    jx = (neigh_id < 3) ? ix - neigh_id - 1 : ix + neigh_id;
-    fx = intrinsics[0];
-    fy = intrinsics[1];
-    cx = intrinsics[2];
-    cy = intrinsics[3];
-  }
-
-  __syncthreads();
-
-  if (jx < 0 || jx >= num) {
-    return;
-  }
-
-  const float t = thresh[block_id];
-
-  // load poses from global memory
-  if (threadIdx.x < 3) {
-    ti[threadIdx.x] = poses[ix][threadIdx.x];
-    tj[threadIdx.x] = poses[jx][threadIdx.x];
-  }
-
-  if (threadIdx.x < 4) {
-    qi[threadIdx.x] = poses[ix][threadIdx.x+3];
-    qj[threadIdx.x] = poses[jx][threadIdx.x+3];
-  }
-
-  __syncthreads();
-
-  if (threadIdx.x == 0) {
-    relSE3(ti, qi, tj, qj, tij, qij);
-  }
-
-  //points 
-  float Xi[4];
-  float Xj[4];
-
-  __syncthreads();
-
-  if (index < ht*wd) {
-    const int i = index / wd;
-    const int j = index % wd;
-
-    const float ui = static_cast<float>(j);
-    const float vi = static_cast<float>(i);
-    const float di = disps[ix][i][j];
-    
-    // homogenous coordinates
-    Xi[0] = (ui - cx) / fx;
-    Xi[1] = (vi - cy) / fy;
-    Xi[2] = 1;
-    Xi[3] = di;
-
-    // transform homogenous point
-    actSE3(tij, qij, Xi, Xj);
-
-    const float uj = fx * (Xj[0] / Xj[2]) + cx;
-    const float vj = fy * (Xj[1] / Xj[2]) + cy;
-    const float dj = Xj[3] / Xj[2];
-
-    const int u0 = static_cast<int>(floor(uj));
-    const int v0 = static_cast<int>(floor(vj));
-
-    if (u0 >= 0 && v0 >= 0 && u0 < wd-1 && v0 < ht-1) {
-      const float wx = ceil(uj) - uj;
-      const float wy = ceil(vj) - vj;
-
-      const float d00 = disps[jx][v0+0][u0+0];
-      const float d01 = disps[jx][v0+0][u0+1];
-      const float d10 = disps[jx][v0+1][u0+0];
-      const float d11 = disps[jx][v0+1][u0+1];
-
-      const float dj_hat = wy*wx*d00 + wy*(1-wx)*d01 + (1-wy)*wx*d10 + (1-wy)*(1-wx)*d11;
-
-      const float err = abs(1.0/dj - 1.0/dj_hat);
-      if       (abs(1.0/dj - 1.0/d00) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
-      else if  (abs(1.0/dj - 1.0/d01) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
-      else if  (abs(1.0/dj - 1.0/d10) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
-      else if  (abs(1.0/dj - 1.0/d11) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
+    if (threadIdx.x == 0) {
+        ix = static_cast<int>(inds[block_id]);
+        jx = (neigh_id < 3) ? ix - neigh_id - 1 : ix + neigh_id;
+        fx = intrinsics[0];
+        fy = intrinsics[1];
+        cx = intrinsics[2];
+        cy = intrinsics[3];
     }
-  }
+
+    __syncthreads();
+
+    if (jx < 0 || jx >= num) {
+        return;
+    }
+
+    const float t = thresh[block_id];
+
+    // load poses from global memory
+    if (threadIdx.x < 3) {
+        ti[threadIdx.x] = poses[ix][threadIdx.x];
+        tj[threadIdx.x] = poses[jx][threadIdx.x];
+    }
+
+    if (threadIdx.x < 4) {
+        qi[threadIdx.x] = poses[ix][threadIdx.x+3];
+        qj[threadIdx.x] = poses[jx][threadIdx.x+3];
+    }
+
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        relSE3(ti, qi, tj, qj, tij, qij);
+    }
+
+    //points 
+    float Xi[4];
+    float Xj[4];
+
+    __syncthreads();
+
+    if (index < ht*wd) {
+        const int i = index / wd;
+        const int j = index % wd;
+
+        const float ui = static_cast<float>(j);
+        const float vi = static_cast<float>(i);
+        const float di = disps[ix][i][j];
+
+        // homogenous coordinates
+        Xi[0] = (ui - cx) / fx;
+        Xi[1] = (vi - cy) / fy;
+        Xi[2] = 1;
+        Xi[3] = di;
+
+        // transform homogenous point
+        actSE3(tij, qij, Xi, Xj);
+
+        const float uj = fx * (Xj[0] / Xj[2]) + cx;
+        const float vj = fy * (Xj[1] / Xj[2]) + cy;
+        const float dj = Xj[3] / Xj[2];
+
+        const int u0 = static_cast<int>(floor(uj));
+        const int v0 = static_cast<int>(floor(vj));
+
+        if (u0 >= 0 && v0 >= 0 && u0 < wd-1 && v0 < ht-1) {
+            const float wx = ceil(uj) - uj;
+            const float wy = ceil(vj) - vj;
+
+            const float d00 = disps[jx][v0+0][u0+0];
+            const float d01 = disps[jx][v0+0][u0+1];
+            const float d10 = disps[jx][v0+1][u0+0];
+            const float d11 = disps[jx][v0+1][u0+1];
+
+            const float dj_hat = wy*wx*d00 + wy*(1-wx)*d01 + (1-wy)*wx*d10 + (1-wy)*(1-wx)*d11;
+
+            const float err = abs(1.0/dj - 1.0/dj_hat);
+            if       (abs(1.0/dj - 1.0/d00) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
+            else if  (abs(1.0/dj - 1.0/d01) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
+            else if  (abs(1.0/dj - 1.0/d10) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
+            else if  (abs(1.0/dj - 1.0/d11) < t) atomicAdd(&counter[block_id][i][j], 1.0f);
+        }
+    }
 }
 
 
 
 __global__ void iproj_kernel(
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
-    const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
-    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
-    torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> points)
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
+        const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
+        const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
+        torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> points)
 
 {
 
-  const int block_id = blockIdx.x;
-  const int index = blockIdx.y * blockDim.x + threadIdx.x;
+    const int block_id = blockIdx.x;
+    const int index = blockIdx.y * blockDim.x + threadIdx.x;
 
 
-  const int num = disps.size(0);
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
+    const int num = disps.size(0);
+    const int ht = disps.size(1);
+    const int wd = disps.size(2);
 
-  __shared__ float fx;
-  __shared__ float fy;
-  __shared__ float cx;
-  __shared__ float cy;
+    __shared__ float fx;
+    __shared__ float fy;
+    __shared__ float cx;
+    __shared__ float cy;
 
-  __shared__ float t[3];
-  __shared__ float q[4];
+    __shared__ float t[3];
+    __shared__ float q[4];
 
-  if (threadIdx.x == 0) {
-    fx = intrinsics[0];
-    fy = intrinsics[1];
-    cx = intrinsics[2];
-    cy = intrinsics[3];
-  }
+    if (threadIdx.x == 0) {
+        fx = intrinsics[0];
+        fy = intrinsics[1];
+        cx = intrinsics[2];
+        cy = intrinsics[3];
+    }
 
-  __syncthreads();
+    __syncthreads();
 
 
-  // load poses from global memory
-  if (threadIdx.x < 3) {
-    t[threadIdx.x] = poses[block_id][threadIdx.x];
-  }
+    // load poses from global memory
+    if (threadIdx.x < 3) {
+        t[threadIdx.x] = poses[block_id][threadIdx.x];
+    }
 
-  if (threadIdx.x < 4) {
-    q[threadIdx.x] = poses[block_id][threadIdx.x+3];
-  }
+    if (threadIdx.x < 4) {
+        q[threadIdx.x] = poses[block_id][threadIdx.x+3];
+    }
 
-  __syncthreads();
+    __syncthreads();
 
-  //points 
-  float Xi[4];
-  float Xj[4];
+    //points 
+    float Xi[4];
+    float Xj[4];
 
-  if (index < ht*wd) {
-    const int i = index / wd;
-    const int j = index % wd;
+    if (index < ht*wd) {
+        const int i = index / wd;
+        const int j = index % wd;
 
-    const float ui = static_cast<float>(j);
-    const float vi = static_cast<float>(i);
-    const float di = disps[block_id][i][j];
-    
-    // homogenous coordinates
-    Xi[0] = (ui - cx) / fx;
-    Xi[1] = (vi - cy) / fy;
-    Xi[2] = 1;
-    Xi[3] = di;
+        const float ui = static_cast<float>(j);
+        const float vi = static_cast<float>(i);
+        const float di = disps[block_id][i][j];
 
-    // transform homogenous point
-    actSE3(t, q, Xi, Xj);
+        // homogenous coordinates
+        Xi[0] = (ui - cx) / fx;
+        Xi[1] = (vi - cy) / fy;
+        Xi[2] = 1;
+        Xi[3] = di;
 
-    points[block_id][i][j][0] = Xj[0] / Xj[3];
-    points[block_id][i][j][1] = Xj[1] / Xj[3];
-    points[block_id][i][j][2] = Xj[2] / Xj[3];
+        // transform homogenous point
+        actSE3(t, q, Xi, Xj);
 
-  }
+        points[block_id][i][j][0] = Xj[0] / Xj[3];
+        points[block_id][i][j][1] = Xj[1] / Xj[3];
+        points[block_id][i][j][2] = Xj[2] / Xj[3];
+
+    }
 }
 
 
 
 __global__ void accum_kernel(
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> inps,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ptrs,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> idxs,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> outs)
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> inps,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ptrs,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> idxs,
+        torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> outs)
 {
-  
-  const int block_id = blockIdx.x;
-  const int D = inps.size(2);
 
-  const int start = ptrs[block_id];
-  const int end = ptrs[block_id+1];
+    const int block_id = blockIdx.x;
+    const int D = inps.size(2);
 
-  for (int k=threadIdx.x; k<D; k+=blockDim.x) {
-    float x = 0;
-    for (int i=start; i<end; i++) {
-      x += inps[idxs[i]][k];
-    }
-    outs[block_id][k] = x;
-  }  
+    const int start = ptrs[block_id];
+    const int end = ptrs[block_id+1];
+
+    for (int k=threadIdx.x; k<D; k+=blockDim.x) {
+        float x = 0;
+        for (int i=start; i<end; i++) {
+            x += inps[idxs[i]][k];
+        }
+        outs[block_id][k] = x;
+    }  
 }
 
 
 __device__ void
 retrSE3(const float *xi, const float* t, const float* q, float* t1, float* q1) {
-  // retraction on SE3 manifold
+    // retraction on SE3 manifold
 
-  float dt[3] = {0, 0, 0};
-  float dq[4] = {0, 0, 0, 1};
-  
-  expSE3(xi, dt, dq);
+    float dt[3] = {0, 0, 0};
+    float dq[4] = {0, 0, 0, 1};
 
-  q1[0] = dq[3] * q[0] + dq[0] * q[3] + dq[1] * q[2] - dq[2] * q[1];
-  q1[1] = dq[3] * q[1] + dq[1] * q[3] + dq[2] * q[0] - dq[0] * q[2];
-  q1[2] = dq[3] * q[2] + dq[2] * q[3] + dq[0] * q[1] - dq[1] * q[0];
-  q1[3] = dq[3] * q[3] - dq[0] * q[0] - dq[1] * q[1] - dq[2] * q[2];
+    // convert xi to SE3 manifold dt dq
+    expSE3(xi, dt, dq);
 
-  actSO3(dq, t, t1);
-  t1[0] += dt[0];
-  t1[1] += dt[1];
-  t1[2] += dt[2];
+    // update q
+    q1[0] = dq[3] * q[0] + dq[0] * q[3] + dq[1] * q[2] - dq[2] * q[1];
+    q1[1] = dq[3] * q[1] + dq[1] * q[3] + dq[2] * q[0] - dq[0] * q[2];
+    q1[2] = dq[3] * q[2] + dq[2] * q[3] + dq[0] * q[1] - dq[1] * q[0];
+    q1[3] = dq[3] * q[3] - dq[0] * q[0] - dq[1] * q[1] - dq[2] * q[2];
+
+    // update t
+    actSO3(dq, t, t1);
+    t1[0] += dt[0];
+    t1[1] += dt[1];
+    t1[2] += dt[2];
 }
 
 
+
+// recuperation de la poses updated avec dx
 __global__ void pose_retr_kernel(
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> dx,
-    const int t0, const int t1) 
+        torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> dx,
+        const int t0, const int t1) 
 {
 
-  for (int k=t0+threadIdx.x; k<t1; k+=blockDim.x) {
-    float xi[6], q[4], q1[4], t[3], t1[3];
+    for (int k=t0+threadIdx.x; k<t1; k+=blockDim.x) {
+        float xi[6], q[4], q1[4], t[3], t1[3];
 
-    t[0] = poses[k][0];
-    t[1] = poses[k][1];
-    t[2] = poses[k][2];
+        t[0] = poses[k][0];
+        t[1] = poses[k][1];
+        t[2] = poses[k][2];
 
-    q[0] = poses[k][3];
-    q[1] = poses[k][4];
-    q[2] = poses[k][5];
-    q[3] = poses[k][6];
-    
-    for (int n=0; n<6; n++) {
-      xi[n] = dx[k-t0][n];
+        q[0] = poses[k][3];
+        q[1] = poses[k][4];
+        q[2] = poses[k][5];
+        q[3] = poses[k][6];
+
+        for (int n=0; n<6; n++) {
+            xi[n] = dx[k-t0][n];
+        }
+
+        retrSE3(xi, t, q, t1, q1);
+
+        poses[k][0] = t1[0];
+        poses[k][1] = t1[1];
+        poses[k][2] = t1[2];
+
+        poses[k][3] = q1[0];
+        poses[k][4] = q1[1];
+        poses[k][5] = q1[2];
+        poses[k][6] = q1[3];
     }
-
-    retrSE3(xi, t, q, t1, q1);
-
-    poses[k][0] = t1[0];
-    poses[k][1] = t1[1];
-    poses[k][2] = t1[2];
-
-    poses[k][3] = q1[0];
-    poses[k][4] = q1[1];
-    poses[k][5] = q1[2];
-    poses[k][6] = q1[3];
-  }
 }
 
+
+
+
+// recupreation de la disps updated avec dz
 __global__ void disp_retr_kernel(
-    torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> dz,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> inds) 
+        torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> dz,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> inds) 
 {
-  const int i = inds[blockIdx.x];
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
+    const int i = inds[blockIdx.x];
+    const int ht = disps.size(1);
+    const int wd = disps.size(2);
 
-  for (int k=threadIdx.x; k<ht*wd; k+=blockDim.x) {
-    float d = disps[i][k/wd][k%wd] + dz[blockIdx.x][k];
-    disps[i][k/wd][k%wd] = d;
-  }
+    for (int k=threadIdx.x; k<ht*wd; k+=blockDim.x) {
+        float d = disps[i][k/wd][k%wd] + dz[blockIdx.x][k];
+        disps[i][k/wd][k%wd] = d;
+    }
 }
+
+
+
+
 
 torch::Tensor accum_cuda(torch::Tensor data, torch::Tensor ix, torch::Tensor jx) {
-  torch::Tensor ix_cpu = ix.to(torch::kCPU);
-  torch::Tensor jx_cpu = jx.to(torch::kCPU);
-  torch::Tensor inds = torch::argsort(ix_cpu);
+    torch::Tensor ix_cpu = ix.to(torch::kCPU);
+    torch::Tensor jx_cpu = jx.to(torch::kCPU);
+    torch::Tensor inds = torch::argsort(ix_cpu);
 
-  long* ix_data = ix_cpu.data_ptr<long>();
-  long* jx_data = jx_cpu.data_ptr<long>();
-  long* kx_data = inds.data_ptr<long>();
+    long* ix_data = ix_cpu.data_ptr<long>();
+    long* jx_data = jx_cpu.data_ptr<long>();
+    long* kx_data = inds.data_ptr<long>();
 
-  int count = jx.size(0);
-  std::vector<int> cols;
+    int count = jx.size(0);
+    std::vector<int> cols;
 
-  torch::Tensor ptrs_cpu = torch::zeros({count+1}, 
-    torch::TensorOptions().dtype(torch::kInt64));
-  
-  long* ptrs_data = ptrs_cpu.data_ptr<long>();
-  ptrs_data[0] = 0;
+    torch::Tensor ptrs_cpu = torch::zeros({count+1}, 
+            torch::TensorOptions().dtype(torch::kInt64));
 
-  int i = 0;
-  for (int j=0; j<count; j++) {
-    while (i < ix.size(0) && ix_data[kx_data[i]] <= jx_data[j]) {
-      if (ix_data[kx_data[i]] == jx_data[j])
-        cols.push_back(kx_data[i]);
-      i++;
+    long* ptrs_data = ptrs_cpu.data_ptr<long>();
+    ptrs_data[0] = 0;
+
+    int i = 0;
+    for (int j=0; j<count; j++) {
+        while (i < ix.size(0) && ix_data[kx_data[i]] <= jx_data[j]) {
+            if (ix_data[kx_data[i]] == jx_data[j])
+                cols.push_back(kx_data[i]);
+            i++;
+        }
+        ptrs_data[j+1] = cols.size();
     }
-    ptrs_data[j+1] = cols.size();
-  }
 
-  torch::Tensor idxs_cpu = torch::zeros({long(cols.size())}, 
-    torch::TensorOptions().dtype(torch::kInt64));
+    torch::Tensor idxs_cpu = torch::zeros({long(cols.size())}, 
+            torch::TensorOptions().dtype(torch::kInt64));
 
-  long* idxs_data = idxs_cpu.data_ptr<long>();
+    long* idxs_data = idxs_cpu.data_ptr<long>();
 
-  for (int i=0; i<cols.size(); i++) {
-    idxs_data[i] = cols[i];
-  }
+    for (int i=0; i<cols.size(); i++) {
+        idxs_data[i] = cols[i];
+    }
 
-  torch::Tensor ptrs = ptrs_cpu.to(torch::kCUDA);
-  torch::Tensor idxs = idxs_cpu.to(torch::kCUDA);
+    torch::Tensor ptrs = ptrs_cpu.to(torch::kCUDA);
+    torch::Tensor idxs = idxs_cpu.to(torch::kCUDA);
 
-  torch::Tensor out = torch::zeros({jx.size(0), data.size(1)},
-    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
+    torch::Tensor out = torch::zeros({jx.size(0), data.size(1)},
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
 
-  accum_kernel<<<count, THREADS>>>(
-    data.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-    ptrs.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-    idxs.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-    out.packed_accessor32<float,2,torch::RestrictPtrTraits>());
+    accum_kernel<<<count, THREADS>>>(
+            data.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+            ptrs.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+            idxs.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+            out.packed_accessor32<float,2,torch::RestrictPtrTraits>());
 
-  return out;
+    return out;
 }
+
 
 
 __global__ void EEt6x6_kernel(
-    const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> E,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> Q,
+        const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> E,
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> Q,
 
-    const torch::PackedTensorAccessor32<long,2,torch::RestrictPtrTraits> idx,
-    torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> S)
+        const torch::PackedTensorAccessor32<long,2,torch::RestrictPtrTraits> idx,
+        torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> S)
 {
 
-  // indicices
-  const int ix = idx[blockIdx.x][0];
-  const int jx = idx[blockIdx.x][1];
-  const int kx = idx[blockIdx.x][2];
+    // indicices
+    const int ix = idx[blockIdx.x][0];
+    const int jx = idx[blockIdx.x][1];
+    const int kx = idx[blockIdx.x][2];
 
-  const int D = E.size(2);
+    const int D = E.size(2);
 
-  float dS[6][6];
-  float ei[6];
-  float ej[6];
+    float dS[6][6];
+    float ei[6];
+    float ej[6];
 
-  for (int i=0; i<6; i++) {
-    for (int j=0; j<6; j++) {
-      dS[i][j] = 0;
+    for (int i=0; i<6; i++) {
+        for (int j=0; j<6; j++) {
+            dS[i][j] = 0;
+        }
     }
-  }
 
-  for (int k=threadIdx.x; k<D; k+=blockDim.x) {
-    const float q = Q[kx][k];
-      
-    // coalesced memory read
+    for (int k=threadIdx.x; k<D; k+=blockDim.x) {
+        const float q = Q[kx][k];
+
+        // coalesced memory read
+        for (int n=0; n<6; n++) {
+            ei[n] = E[ix][n][k] * q;
+            ej[n] = E[jx][n][k];
+        }
+
+        // block EEt
+        for (int n=0; n<6; n++) {
+            for (int m=0; m<6; m++) {
+                dS[n][m] += ei[n] * ej[m];
+            }
+        }
+    }
+
+    __syncthreads();
+    __shared__ float sdata[THREADS];
+
     for (int n=0; n<6; n++) {
-      ei[n] = E[ix][n][k] * q;
-      ej[n] = E[jx][n][k];
+        for (int m=0; m<6; m++) {
+            sdata[threadIdx.x] = dS[n][m];
+
+            blockReduce(sdata);
+
+            if (threadIdx.x == 0) {
+                S[blockIdx.x][n][m] = sdata[0];
+            }
+        }
     }
-
-    // block EEt
-    for (int n=0; n<6; n++) {
-      for (int m=0; m<6; m++) {
-        dS[n][m] += ei[n] * ej[m];
-      }
-    }
-  }
-
-  __syncthreads();
-  __shared__ float sdata[THREADS];
-
-  for (int n=0; n<6; n++) {
-    for (int m=0; m<6; m++) {
-      sdata[threadIdx.x] = dS[n][m];
-
-      blockReduce(sdata);
-
-      if (threadIdx.x == 0) {
-        S[blockIdx.x][n][m] = sdata[0];
-      }
-    }
-  }
 }
+
+
 
 
 __global__ void Ev6x1_kernel(
-    const torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> E,
-    const torch::PackedTensorAccessor32<float, 2,torch::RestrictPtrTraits> Q,
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> w,
-    const torch::PackedTensorAccessor32<long,2,torch::RestrictPtrTraits> idx,
-    torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> v)
+        const torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> E,
+        const torch::PackedTensorAccessor32<float, 2,torch::RestrictPtrTraits> Q,
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> w,
+        const torch::PackedTensorAccessor32<long,2,torch::RestrictPtrTraits> idx,
+        torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> v)
 {
-  const int D = E.size(2);
-  const int kx = idx[blockIdx.x][0];
+    const int D = E.size(2);
+    const int kx = idx[blockIdx.x][0];
 
-  float b[6];
-  for (int n=0; n<6; n++) {
-    b[n] = 0.0;
-  }
+    float b[6];
+    for (int n=0; n<6; n++) {
+        b[n] = 0.0;
+    }
 
-  for (int k=threadIdx.x; k<D; k+=blockDim.x) {
-    const float q_w = Q[kx][k] * w[kx][k];
+    for (int k=threadIdx.x; k<D; k+=blockDim.x) {
+        const float q_w = Q[kx][k] * w[kx][k];
+
+        for (int n=0; n<6; n++) {
+            b[n] += q_w * E[blockIdx.x][n][k];
+        }
+    }
+
+    __syncthreads();
+    __shared__ float sdata[THREADS];
 
     for (int n=0; n<6; n++) {
-      b[n] += q_w * E[blockIdx.x][n][k];
+        sdata[threadIdx.x] = b[n];
+        blockReduce(sdata);
+
+        if (threadIdx.x == 0) {
+            v[blockIdx.x][n] += sdata[0];
+        }
     }
-  }
-
-  __syncthreads();
-  __shared__ float sdata[THREADS];
-
-  for (int n=0; n<6; n++) {
-    sdata[threadIdx.x] = b[n];
-    blockReduce(sdata);
-
-    if (threadIdx.x == 0) {
-      v[blockIdx.x][n] += sdata[0];
-    }
-  }
 }
+
+
 
 __global__ void EvT6x1_kernel(
-  const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> E,
-  const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> x,
-  const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> idx,
-  torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> w)
+        const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> E,
+        const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> x,
+        const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> idx,
+        torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> w)
 {
 
-  const int D = E.size(2);
-  const int ix = idx[blockIdx.x];
+    const int D = E.size(2);
+    const int ix = idx[blockIdx.x];
 
-  if (idx[blockIdx.x] <= 0 || idx[blockIdx.x] >= x.size(0))
-    return;
+    if (idx[blockIdx.x] <= 0 || idx[blockIdx.x] >= x.size(0))
+        return;
 
-  for (int k=threadIdx.x; k<D; k+=blockDim.x) {
-    float dw = 0;
-    for (int n=0; n<6; n++) {
-      dw += E[blockIdx.x][n][k] * x[ix][n];
+    for (int k=threadIdx.x; k<D; k+=blockDim.x) {
+        float dw = 0;
+        for (int n=0; n<6; n++) {
+            dw += E[blockIdx.x][n][k] * x[ix][n];
+        }
+        w[blockIdx.x][k] = dw;
     }
-    w[blockIdx.x][k] = dw;
-  }
 }
 
 
 
-
+// class sparseblock pour build the optimization problem
 class SparseBlock {
   public:
 
@@ -1259,6 +1302,7 @@ class SparseBlock {
       A.setFromTriplets(tripletList.begin(), tripletList.end());
     }
 
+    // right hand side
     void update_rhs(torch::Tensor bs, torch::Tensor ii) {
       auto bs_cpu = bs.to(torch::kCPU).to(torch::kFloat64);
       auto ii_cpu = ii.to(torch::kCPU).to(torch::kInt64);
@@ -1324,7 +1368,7 @@ class SparseBlock {
 
 
 
-
+// schur block pour le tricks de schur
 SparseBlock schur_block(torch::Tensor E,
         torch::Tensor Q,
         torch::Tensor w,
@@ -1419,6 +1463,11 @@ SparseBlock schur_block(torch::Tensor E,
 
 
 
+
+
+
+
+// main method for the BA
 std::vector<torch::Tensor> ba_cuda(
     torch::Tensor poses,
     torch::Tensor disps,
@@ -1505,6 +1554,7 @@ std::vector<torch::Tensor> ba_cuda(
         A.update_rhs(vs.reshape({-1, 6}), 
                 torch::cat({ii, jj}) - t0);
 
+        // only at the end to get non kf poses
         if (motion_only) {
             dx = A.solve(lm, ep);
 
@@ -1528,6 +1578,8 @@ std::vector<torch::Tensor> ba_cuda(
             torch::Tensor E = torch::cat({Ei, Eij}, 0);
 
             SparseBlock S = schur_block(E, Q, w, ii_exp, jj_exp, kk_exp, t0, t1);
+
+            // solve for dx for the update pose
             dx = (A - S).solve(lm, ep);
 
             torch::Tensor ix = jj_exp - t0;
@@ -1539,6 +1591,7 @@ std::vector<torch::Tensor> ba_cuda(
                     ix.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
                     dw.packed_accessor32<float,2,torch::RestrictPtrTraits>());
 
+            // solve for dz for the update depth
             dz = Q * (w - accum_cuda(dw, ii_exp, kx));
 
             // update poses
@@ -1555,6 +1608,7 @@ std::vector<torch::Tensor> ba_cuda(
 
     }
 
+    // return updates
     return {dx, dz};
 }
 
