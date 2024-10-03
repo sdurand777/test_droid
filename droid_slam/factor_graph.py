@@ -235,7 +235,7 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        #import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
         # motion features
         with torch.cuda.amp.autocast(enabled=False):

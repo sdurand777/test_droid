@@ -207,7 +207,6 @@ class DroidFrontend:
         self.video.disps[self.t1-1] = torch.where(self.video.disps_sens[self.t1-1] > 0, 
            self.video.disps_sens[self.t1-1], self.video.disps[self.t1-1])
 
-        # print("+++++ update operator for disparity with 4 iterations to be more accurate")
         for itr in range(self.iters1):
             self.graph.update(None, None, use_inactive=True)
 
