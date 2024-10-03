@@ -135,7 +135,12 @@ class UpdateModule(nn.Module):
         inp = inp.view(batch*num, -1, ht, wd)        
         # correlation info
         corr = corr.view(batch*num, -1, ht, wd)
-        # flow info
+        # flow info correspond to motn in factor_graph update method
+            # # motion flow initial guess for RAFT self.target define in add_factors
+            # motn = torch.cat([coords1 - self.coords0, self.target - coords1], dim=-1)
+            # # reshape motn from [1,22,40,64,4] tp [1,22,4,40,64]
+            # motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
+
         flow = flow.view(batch*num, -1, ht, wd)
 
         # pour faire passer corr de [1,196(49*4),40,64] en [1,128,40,64]

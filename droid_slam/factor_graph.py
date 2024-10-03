@@ -104,7 +104,7 @@ class FactorGraph:
     def add_factors(self, ii, jj, remove=False):
         """ add edges to factor graph """
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # juste verifie si on recoit bien des tensors sinon conversion
         if not isinstance(ii, torch.Tensor):
@@ -235,14 +235,15 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # motion features
         with torch.cuda.amp.autocast(enabled=False):
-            # initial target guess based on poses from video
+            # initial target guess based on poses from video pij
             coords1, mask = self.video.reproject(self.ii, self.jj)
 
             # motion flow initial guess for RAFT self.target define in add_factors
+            # optical flow induced by camera motion for convgru
             motn = torch.cat([coords1 - self.coords0, self.target - coords1], dim=-1)
             # reshape motn from [1,22,40,64,4] tp [1,22,4,40,64]
             motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
@@ -251,6 +252,7 @@ class FactorGraph:
         # Call CorrBlock_call method to lookup within corr
         
         # shape [1, number of edges in graph, 196, 40, 64]
+        # index correlation volume with pij correspondence field based on geometric reprojection video.reproject
         corr = self.corr(coords1)
 
         # update_op we use feature map of all edges in the graph ! its big permet de update net
@@ -265,7 +267,9 @@ class FactorGraph:
         with torch.cuda.amp.autocast(enabled=False):
             # refined target with RAFT delta
             # target [1,22,40,64,2]
+            # revised flow with delta obtained with RAFT update_op
             self.target = coords1 + delta.to(dtype=torch.float)
+            # confidence weight for revised flow obtained with RAFT update_op
             self.weight = weight.to(dtype=torch.float)
 
             ht, wd = self.coords0.shape[0:2]
@@ -377,7 +381,7 @@ class FactorGraph:
     def add_proximity_factors(self, t0=0, t1=0, rad=2, nms=2, beta=0.25, thresh=16.0, remove=False):
         """ add edges to the factor graph based on distance """
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         t = self.video.counter.value
 

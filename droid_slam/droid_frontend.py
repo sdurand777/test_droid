@@ -168,7 +168,7 @@ class DroidFrontend:
         """ add edges, perform update """
         #print("+++++ update DroidFrontend")
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         self.count += 1
         self.t1 += 1
@@ -203,6 +203,7 @@ class DroidFrontend:
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
 
+        # update disp with disp_sens if available
         self.video.disps[self.t1-1] = torch.where(self.video.disps_sens[self.t1-1] > 0, 
            self.video.disps_sens[self.t1-1], self.video.disps[self.t1-1])
 
@@ -219,6 +220,7 @@ class DroidFrontend:
 
         # set initial pose for next frame
         poses = SE3(self.video.poses)
+
         # utilisation de la distance metric entre les frames pour decider ajout ou remplacement derniere keyframe
         d = self.video.distance([self.t1-3], [self.t1-2], beta=self.beta, bidirectional=True)
 
@@ -385,7 +387,7 @@ class DroidFrontend:
     def __initialize(self):
         """ initialize the SLAM system """
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         self.t0 = 0
         self.t1 = self.video.counter.value
@@ -442,7 +444,7 @@ class DroidFrontend:
 
         # BA sur le graph optimise
         for itr in range(8):
-            # upate target using delta from raft
+            # update target using delta from raft
             self.graph.update(1, use_inactive=True)
 
         #self.visualize_graph(frame_info+"INIT - Graph post BA", ii_0, jj_0)

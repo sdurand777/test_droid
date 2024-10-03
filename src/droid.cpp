@@ -27,13 +27,6 @@ torch::Tensor frame_distance_cuda(
   torch::Tensor jj,
   const float beta);
 
-std::vector<torch::Tensor> projmap_cuda(
-  torch::Tensor poses,
-  torch::Tensor disps,
-  torch::Tensor intrinsics,
-  torch::Tensor ii,
-  torch::Tensor jj);
-
 torch::Tensor iproj_cuda(
   torch::Tensor poses,
   torch::Tensor disps,
@@ -134,6 +127,7 @@ std::vector<torch::Tensor> ba(
     CHECK_INPUT(ii);
     CHECK_INPUT(jj);
 
+    // return dx dz les termes correctifs pour poses et depth
     return ba_cuda(poses, disps, intrinsics, disps_sens, targets, weights,
                     eta, ii, jj, t0, t1, iterations, lm, ep, motion_only);
 
@@ -158,23 +152,6 @@ torch::Tensor frame_distance(
 
 }
 
-
-std::vector<torch::Tensor> projmap(
-    torch::Tensor poses,
-    torch::Tensor disps,
-    torch::Tensor intrinsics,
-    torch::Tensor ii,
-    torch::Tensor jj) {
-
-  CHECK_INPUT(poses);
-  CHECK_INPUT(disps);
-  CHECK_INPUT(intrinsics);
-  CHECK_INPUT(ii);
-  CHECK_INPUT(jj);
-
-  return projmap_cuda(poses, disps, intrinsics, ii, jj);
-
-}
 
 
 torch::Tensor iproj(
@@ -266,8 +243,37 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("iproj", &iproj, "back projection");
 
   // correlation volume kernels
-  m.def("altcorr_forward", &altcorr_forward, "ALTCORR forward");
-  m.def("altcorr_backward", &altcorr_backward, "ALTCORR backward");
+  // m.def("altcorr_forward", &altcorr_forward, "ALTCORR forward");
+  // m.def("altcorr_backward", &altcorr_backward, "ALTCORR backward");
   m.def("corr_index_forward", &corr_index_forward, "INDEX forward");
   m.def("corr_index_backward", &corr_index_backward, "INDEX backward");
 }
+
+
+
+// std::vector<torch::Tensor> projmap_cuda(
+//   torch::Tensor poses,
+//   torch::Tensor disps,
+//   torch::Tensor intrinsics,
+//   torch::Tensor ii,
+//   torch::Tensor jj);
+
+
+// std::vector<torch::Tensor> projmap(
+//     torch::Tensor poses,
+//     torch::Tensor disps,
+//     torch::Tensor intrinsics,
+//     torch::Tensor ii,
+//     torch::Tensor jj) {
+//
+//   CHECK_INPUT(poses);
+//   CHECK_INPUT(disps);
+//   CHECK_INPUT(intrinsics);
+//   CHECK_INPUT(ii);
+//   CHECK_INPUT(jj);
+//
+//   return projmap_cuda(poses, disps, intrinsics, ii, jj);
+//
+// }
+
+

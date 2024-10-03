@@ -540,98 +540,6 @@ __global__ void projective_transform_kernel(
 
 
 
-__global__ void projmap_kernel(
-    const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
-    const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
-    const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ii,
-    const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> jj,
-    torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> coords,
-    torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> valid)
-{
-
-  const int block_id = blockIdx.x;
-  const int thread_id = threadIdx.x;
-
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
-
-  __shared__ int ix;
-  __shared__ int jx;
-
-  __shared__ float fx;
-  __shared__ float fy;
-  __shared__ float cx;
-  __shared__ float cy;
-
-  __shared__ float ti[3], tj[3], tij[3];
-  __shared__ float qi[4], qj[4], qij[4];
-
-  // load intrinsics from global memory
-  if (thread_id == 0) {
-    ix = static_cast<int>(ii[block_id]);
-    jx = static_cast<int>(jj[block_id]);
-    fx = intrinsics[0];
-    fy = intrinsics[1];
-    cx = intrinsics[2];
-    cy = intrinsics[3];
-  }
-
-  __syncthreads();
-
-  // load poses from global memory
-  if (thread_id < 3) {
-    ti[thread_id] = poses[ix][thread_id];
-    tj[thread_id] = poses[jx][thread_id];
-  }
-
-  if (thread_id < 4) {
-    qi[thread_id] = poses[ix][thread_id+3];
-    qj[thread_id] = poses[jx][thread_id+3];
-  }
-
-  __syncthreads();
-
-  if (thread_id == 0) {
-    relSE3(ti, qi, tj, qj, tij, qij);
-  }
-
-  //points 
-  float Xi[4];
-  float Xj[4];
-
-  __syncthreads();
-
-  GPU_1D_KERNEL_LOOP(k, ht*wd) {
-    const int i = k / wd;
-    const int j = k % wd;
-
-    const float u = static_cast<float>(j);
-    const float v = static_cast<float>(i);
-    
-    // homogenous coordinates
-    Xi[0] = (u - cx) / fx;
-    Xi[1] = (v - cy) / fy;
-    Xi[2] = 1;
-    Xi[3] = disps[ix][i][j];
-
-    // transform homogenous point
-    actSE3(tij, qij, Xi, Xj);
-
-    coords[block_id][i][j][0] = u;
-    coords[block_id][i][j][1] = v;
-
-    if (Xj[2] > 0.01) {
-      coords[block_id][i][j][0] = fx * (Xj[0] / Xj[2]) + cx;
-      coords[block_id][i][j][1] = fy * (Xj[1] / Xj[2]) + cy;
-    }
-
-    valid[block_id][i][j][0] = (Xj[2] > MIN_DEPTH) ? 1.0 : 0.0;
-
-  }
-}
-
-
 
 
 // method pour recuperer la distance entre les frames
@@ -663,8 +571,10 @@ __global__ void frame_distance_kernel(
 
     // load intrinsics from global memory
     if (thread_id == 0) {
+        // recuperation edge
         ix = static_cast<int>(ii[block_id]);
         jx = static_cast<int>(jj[block_id]);
+        // recuperation intrinsics
         fx = intrinsics[0];
         fy = intrinsics[1];
         cx = intrinsics[2];
@@ -686,6 +596,7 @@ __global__ void frame_distance_kernel(
 
     for (int n=0; n<1; n++) {
 
+        // recuperation des poses
         if (thread_id < 3) {
             ti[thread_id] = poses[ix][thread_id];
             tj[thread_id] = poses[jx][thread_id];
@@ -698,11 +609,12 @@ __global__ void frame_distance_kernel(
 
         __syncthreads();
 
-
+        // relative transfo between frame i and j
         relSE3(ti, qi, tj, qj, tij, qij);
 
         float d, du, dv;
 
+        // loop over all pixels ht * wd
         GPU_1D_KERNEL_LOOP(k, ht*wd) {
             const int i = k / wd;
             const int j = k % wd;
@@ -722,10 +634,15 @@ __global__ void frame_distance_kernel(
             Xi[3] = disps[ix][i][j];
 
             // transform homogenous point
+            // reproject Xi onto frame j to obtain Xj using relative pose tij qij
             actSE3(tij, qij, Xi, Xj);
 
+            // optical flow
+            // displacement along x
             du = fx * (Xj[0] / Xj[2]) + cx - u;
+            // displacement along y
             dv = fy * (Xj[1] / Xj[2]) + cy - v;
+            // disp norm
             d = sqrtf(du*du + dv*dv);
 
             total[threadIdx.x] += beta;
@@ -1643,34 +1560,6 @@ torch::Tensor frame_distance_cuda(
 
 
 
-std::vector<torch::Tensor> projmap_cuda(
-    torch::Tensor poses,
-    torch::Tensor disps,
-    torch::Tensor intrinsics,
-    torch::Tensor ii,
-    torch::Tensor jj)
-{
-  auto opts = poses.options();
-  const int num = ii.size(0);
-  const int ht = disps.size(1);
-  const int wd = disps.size(2);
-
-  torch::Tensor coords = torch::zeros({num, ht, wd, 3}, opts);
-  torch::Tensor valid = torch::zeros({num, ht, wd, 1}, opts);
-
-  projmap_kernel<<<num, THREADS>>>(
-    poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
-    disps.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
-    intrinsics.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
-    ii.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-    jj.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
-    coords.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
-    valid.packed_accessor32<float,4,torch::RestrictPtrTraits>());
-
-  return {coords, valid};
-}
-
-
 
 
 torch::Tensor depth_filter_cuda(
@@ -1726,3 +1615,131 @@ torch::Tensor iproj_cuda(
   return points;
 
 }
+
+
+
+
+
+// __global__ void projmap_kernel(
+//     const torch::PackedTensorAccessor32<float,2,torch::RestrictPtrTraits> poses,
+//     const torch::PackedTensorAccessor32<float,3,torch::RestrictPtrTraits> disps,
+//     const torch::PackedTensorAccessor32<float,1,torch::RestrictPtrTraits> intrinsics,
+//     const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> ii,
+//     const torch::PackedTensorAccessor32<long,1,torch::RestrictPtrTraits> jj,
+//     torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> coords,
+//     torch::PackedTensorAccessor32<float,4,torch::RestrictPtrTraits> valid)
+// {
+//
+//   const int block_id = blockIdx.x;
+//   const int thread_id = threadIdx.x;
+//
+//   const int ht = disps.size(1);
+//   const int wd = disps.size(2);
+//
+//   __shared__ int ix;
+//   __shared__ int jx;
+//
+//   __shared__ float fx;
+//   __shared__ float fy;
+//   __shared__ float cx;
+//   __shared__ float cy;
+//
+//   __shared__ float ti[3], tj[3], tij[3];
+//   __shared__ float qi[4], qj[4], qij[4];
+//
+//   // load intrinsics from global memory
+//   if (thread_id == 0) {
+//     ix = static_cast<int>(ii[block_id]);
+//     jx = static_cast<int>(jj[block_id]);
+//     fx = intrinsics[0];
+//     fy = intrinsics[1];
+//     cx = intrinsics[2];
+//     cy = intrinsics[3];
+//   }
+//
+//   __syncthreads();
+//
+//   // load poses from global memory
+//   if (thread_id < 3) {
+//     ti[thread_id] = poses[ix][thread_id];
+//     tj[thread_id] = poses[jx][thread_id];
+//   }
+//
+//   if (thread_id < 4) {
+//     qi[thread_id] = poses[ix][thread_id+3];
+//     qj[thread_id] = poses[jx][thread_id+3];
+//   }
+//
+//   __syncthreads();
+//
+//   if (thread_id == 0) {
+//     relSE3(ti, qi, tj, qj, tij, qij);
+//   }
+//
+//   //points 
+//   float Xi[4];
+//   float Xj[4];
+//
+//   __syncthreads();
+//
+//   GPU_1D_KERNEL_LOOP(k, ht*wd) {
+//     const int i = k / wd;
+//     const int j = k % wd;
+//
+//     const float u = static_cast<float>(j);
+//     const float v = static_cast<float>(i);
+//     
+//     // homogenous coordinates
+//     Xi[0] = (u - cx) / fx;
+//     Xi[1] = (v - cy) / fy;
+//     Xi[2] = 1;
+//     Xi[3] = disps[ix][i][j];
+//
+//     // transform homogenous point
+//     actSE3(tij, qij, Xi, Xj);
+//
+//     coords[block_id][i][j][0] = u;
+//     coords[block_id][i][j][1] = v;
+//
+//     if (Xj[2] > 0.01) {
+//       coords[block_id][i][j][0] = fx * (Xj[0] / Xj[2]) + cx;
+//       coords[block_id][i][j][1] = fy * (Xj[1] / Xj[2]) + cy;
+//     }
+//
+//     valid[block_id][i][j][0] = (Xj[2] > MIN_DEPTH) ? 1.0 : 0.0;
+//
+//   }
+// }
+
+
+
+
+// std::vector<torch::Tensor> projmap_cuda(
+//     torch::Tensor poses,
+//     torch::Tensor disps,
+//     torch::Tensor intrinsics,
+//     torch::Tensor ii,
+//     torch::Tensor jj)
+// {
+//   auto opts = poses.options();
+//   const int num = ii.size(0);
+//   const int ht = disps.size(1);
+//   const int wd = disps.size(2);
+//
+//   torch::Tensor coords = torch::zeros({num, ht, wd, 3}, opts);
+//   torch::Tensor valid = torch::zeros({num, ht, wd, 1}, opts);
+//
+//   projmap_kernel<<<num, THREADS>>>(
+//     poses.packed_accessor32<float,2,torch::RestrictPtrTraits>(),
+//     disps.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
+//     intrinsics.packed_accessor32<float,1,torch::RestrictPtrTraits>(),
+//     ii.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+//     jj.packed_accessor32<long,1,torch::RestrictPtrTraits>(),
+//     coords.packed_accessor32<float,4,torch::RestrictPtrTraits>(),
+//     valid.packed_accessor32<float,4,torch::RestrictPtrTraits>());
+//
+//   return {coords, valid};
+// }
+
+
+
