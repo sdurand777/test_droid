@@ -14,7 +14,7 @@ class TensorAccessorPrinter:
     def __init__(self, val):
         self.val = val
 
-    def to_string(self, indices_spec=None):
+    def to_string(self, indices_spec=None, only_sizes=False):
         # Obtenir les attributs de l'objet tensor
         if indices_spec is None:
             sizes = self.val['sizes_']
@@ -25,15 +25,17 @@ class TensorAccessorPrinter:
             sizes_list = [int(sizes[i].cast(gdb.lookup_type('int'))) for i in range(size_length)]
             
             print(f"sizes_list : {sizes_list}")
+            if only_sizes:
+                return print("End")
 
             # Récupérer le pointeur de données et le convertir en adresse entière
             data_ptr = self.val['data_']
             data_address = int(data_ptr)
-            print("data_address : ", data_address)
+            #print("data_address : ", data_address)
 
             # Calculer le nombre total d'éléments dans le tenseur
             num_elements = np.prod(sizes_list)
-            print("num_elements : ", num_elements)
+            #print("num_elements : ", num_elements)
 
             # Initialiser un tableau NumPy vide avec les bonnes dimensions
             tensor = np.zeros(sizes_list, dtype=float)
@@ -41,33 +43,26 @@ class TensorAccessorPrinter:
             # Configurer GDB pour afficher tous les éléments
             gdb.execute('set print elements 0', to_string=True)
 
-            # # Fonction récursive pour remplir le tenseur
-            # def fill_tensor(indices, offset):
-            #     if len(indices) == len(sizes_list) - 1:
-            #         # Nous sommes au dernier niveau, il faut récupérer une ligne
-            #         size_at_last_dim = sizes_list[-1]
-            #         line_address = f'({data_address} + {offset})'
-            #         expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
-            #         result = gdb.execute(f'print {expr}', to_string=True)
-            #         
-            #         # Extraire les valeurs entre les accolades
-            #         result = result[result.index('{')+1 : result.index('}')]
-            #         elements = [float(x) for x in result.split(',')]
-            #         
-            #         # Remplir la dernière dimension du tenseur
-            #         tensor[tuple(indices)] = elements
-            #     else:
-            #         # Parcourir les indices récursivement pour chaque dimension
-            #         stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
-            #         for i in range(sizes_list[len(indices)]):
-            #             fill_tensor(indices + [i], offset + i * stride)
+            reduced_sizes_list = sizes_list
 
+            if num_elements > 1000:
+                # Reduire le tenseur aux deux dernières dimensions pour l'affichage
+                reduced_sizes_list = sizes_list[-2:]  # Les deux dernières dimensions
+                print(f"Affichage réduit aux deux dernières dimensions : {reduced_sizes_list}")
 
-# Fonction récursive pour remplir le tenseur
+                # Initialiser un tableau NumPy vide pour les deux dernières dimensions
+                tensor = np.zeros(reduced_sizes_list, dtype=float)
+            else:
+                # Initialiser un tableau NumPy vide avec les dimensions complètes
+                tensor = np.zeros(sizes_list, dtype=float)
+            
+            # Configurer GDB pour afficher tous les éléments
+            gdb.execute('set print elements 0', to_string=True)
+
+            # Fonction récursive pour remplir le tenseur (modifiée pour tenir compte de la réduction)
             def fill_tensor(indices, offset):
-                if len(indices) == len(sizes_list) - 1:
-                    # Nous sommes au dernier niveau, il faut récupérer une ligne
-                    size_at_last_dim = sizes_list[-1]
+                if len(indices) == len(reduced_sizes_list if num_elements > 10000 else sizes_list) - 1:
+                    size_at_last_dim = reduced_sizes_list[-1] if num_elements > 10000 else sizes_list[-1]
                     line_address = f'({data_address} + {offset})'
                     expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
                     result = gdb.execute(f'print {expr}', to_string=True)
@@ -86,29 +81,61 @@ class TensorAccessorPrinter:
                             elements.extend([float(value)] * repeat_count)
                         else:
                             elements.append(float(x))
-                    
+
                     # Remplir la dernière dimension du tenseur
                     tensor[tuple(indices)] = elements
                 else:
-                    # Parcourir les indices récursivement pour chaque dimension
                     stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
                     for i in range(sizes_list[len(indices)]):
                         fill_tensor(indices + [i], offset + i * stride)
-
 
             # Lancer le remplissage du tenseur avec une fonction récursive
             fill_tensor([], 0)
 
             # Afficher ou utiliser le tenseur
-            print("Tensor \n", tensor)
-
-# # Lire l'image depuis un fichier
-#             image_path = 'image.jpeg'  # Remplacez par le chemin vers votre image
-#             image = Image.open(image_path)
-#             image.show()
+            print(f"Tensor (affichage réduit si applicable): \n {tensor}")
 
 
-            return "End"
+
+# # Fonction récursive pour remplir le tenseur
+#             def fill_tensor(indices, offset):
+#                 if len(indices) == len(sizes_list) - 1:
+#                     # Nous sommes au dernier niveau, il faut récupérer une ligne
+#                     size_at_last_dim = sizes_list[-1]
+#                     line_address = f'({data_address} + {offset})'
+#                     expr = f'*(@global float[{size_at_last_dim}]*) {line_address}'
+#                     result = gdb.execute(f'print {expr}', to_string=True)
+#
+#                     # Extraire les valeurs entre les accolades
+#                     result = result[result.index('{')+1 : result.index('}')]
+#                     
+#                     # Gestion du format abrégé "valeur <repeats N times>"
+#                     elements = []
+#                     for x in result.split(','):
+#                         x = x.strip()  # Supprimer les espaces
+#                         if '<repeats' in x:
+#                             # Gérer les répétitions
+#                             value, repeat_info = x.split(' <repeats ')
+#                             repeat_count = int(repeat_info.split()[0])
+#                             elements.extend([float(value)] * repeat_count)
+#                         else:
+#                             elements.append(float(x))
+#                     
+#                     # Remplir la dernière dimension du tenseur
+#                     tensor[tuple(indices)] = elements
+#                 else:
+#                     # Parcourir les indices récursivement pour chaque dimension
+#                     stride = strides[len(indices)] * 4  # Taille en octets du float (ajuster si nécessaire)
+#                     for i in range(sizes_list[len(indices)]):
+#                         fill_tensor(indices + [i], offset + i * stride)
+#
+#
+#             # Lancer le remplissage du tenseur avec une fonction récursive
+#             fill_tensor([], 0)
+#
+#             # Afficher ou utiliser le tenseur
+#             print("Tensor \n", tensor)
+
 
         else:
             sizes = self.val['sizes_']
@@ -175,6 +202,7 @@ class TensorAccessorPrinter:
             
             # Mettre à l'échelle les valeurs à la plage [0, 255]
             matrix_scaled = matrix_normalized * 255
+            matrix_scaled = matrix_scaled.astype(np.uint8)
             # Redimensionner l'image pour qu'elle soit plus grande
 
             image = Image.fromarray(matrix_scaled, mode='L')  # Mode 'L' pour une image en niveaux de gris
