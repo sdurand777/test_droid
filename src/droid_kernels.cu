@@ -1519,8 +1519,6 @@ std::vector<torch::Tensor> ba_cuda(
     std::cout << ii_exp << std::endl;
     std::cout << jj_exp << std::endl;
 
-
-
     std::tuple<torch::Tensor, torch::Tensor> kuniq = 
         torch::_unique(ii_exp, true, true);
 

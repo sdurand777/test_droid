@@ -4,8 +4,6 @@ import gdb.printing
 
 import numpy as np
 
-from pprintpp import pprint as pp
-
 from PIL import Image
 
 A = slice(None)
@@ -52,7 +50,7 @@ def print_tensor(tensor_name):
 def build_pretty_printer():
     print("build pretty for at::Tensor")
     pp = gdb.printing.RegexpCollectionPrettyPrinter("torchprinter")
-    pp.add_printer('AtTensorPrinter', '^at::TensorBase*$', TensorPrinter)
+    pp.add_printer('AtTensorPrinter', '^at::TensorBase*$', AtTensorPrinter)
     return pp
 
 gdb.printing.register_pretty_printer(gdb.current_objfile(), build_pretty_printer())
