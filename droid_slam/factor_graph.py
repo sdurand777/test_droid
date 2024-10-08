@@ -235,7 +235,7 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # motion features
         with torch.cuda.amp.autocast(enabled=False):
@@ -294,6 +294,9 @@ class FactorGraph:
             weight = weight.view(-1, ht, wd, 2).permute(0,3,1,2).contiguous()
 
             # BUNDLE ADJUSTMENT
+
+            #import pdb; pdb.set_trace()
+
             self.video.ba(target, weight, damping, ii, jj, t0, t1, 
                 itrs=itrs, lm=1e-4, ep=0.1, motion_only=motion_only)
         

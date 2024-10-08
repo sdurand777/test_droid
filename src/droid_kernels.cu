@@ -20,7 +20,7 @@
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::Triplet<double> T;
 typedef std::vector<std::vector<long>> graph_t;
-typedef std::vector<torch::Tensor> tensor_list_t;
+//typedef std::vector<torch::Tensor> tensor_list_t;
 
 
 
@@ -1624,6 +1624,12 @@ std::vector<torch::Tensor> ba_cuda(
         }
 
     }
+
+    std::cout << "dx : " << dx.sizes() << std::endl;
+    std::cout << "dx : \n" << dx << std::endl;
+
+    std::cout << "dz : " << dz.sizes() << std::endl;
+
 
     // return updates
     return {dx, dz};

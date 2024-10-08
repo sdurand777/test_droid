@@ -200,15 +200,11 @@ class DepthVideo:
 
 
 
-
-
-
     # bundle adjustment performed in graph.update to update video poses
     # eta c'est le damping dans factorgraph
     def ba(self, target, weight, eta, ii, jj, t0=1, t1=None, itrs=2, lm=1e-4, ep=0.1, motion_only=False):
         """ dense bundle adjustment (DBA) """
 
-        #import pdb; pdb.set_trace()
 
         with self.get_lock():
 
@@ -216,6 +212,32 @@ class DepthVideo:
             if t1 is None:
                 t1 = max(ii.max().item(), jj.max().item()) + 1
 
+
+            my_values = {
+                'poses': self.poses.to('cpu'),
+                'disps': self.disps.to('cpu'),
+                'intrinsics': self.intrinsics[0].to('cpu'),
+                'target': target.to('cpu'),
+                'weight': weight.to('cpu'),
+                'eta': eta.to('cpu'),
+                'ii': ii.to('cpu'),
+                'jj': jj.to('cpu'),
+            }
+
+            class Container(torch.nn.Module):
+                def __init__(self, my_values):
+                    super().__init__()
+                    for key in my_values:
+                        setattr(self, key, my_values[key])
+
+# Save arbitrary values supported by TorchScript
+# https://pytorch.org/docs/master/jit.html#supported-type
+            container = torch.jit.script(Container(my_values))
+            container.save("container.pt")
+
+            import pdb; pdb.set_trace()
+
+            # eta c'est le damping
             droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
                 target, weight, eta, ii, jj, t0, t1, itrs, lm, ep, motion_only)
 

@@ -3,11 +3,7 @@ source tensor_printer.py
 source gpu_printer.py
 source gpu_float_printer.py
 set breakpoint pending on
-break src/droid_kernels.cu:557
-break src/droid_kernels.cu:241
-break src/droid_kernels.cu:1494
-break src/droid_kernels.cu:1386
-break src/droid_kernels.cu:1635
+break src/droid_kernels.cu:1628
 
 
 
