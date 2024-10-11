@@ -65,6 +65,8 @@ class DepthVideo:
         self.tstamp[index] = item[0]
         self.images[index] = item[1]
 
+        #import pdb; pdb.set_trace()
+
         if item[2] is not None:
             self.poses[index] = item[2]
 
@@ -236,7 +238,7 @@ class DepthVideo:
             container = torch.jit.script(Container(my_values))
             container.save("container.pt")
 
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
 
             # eta c'est le damping
             droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,

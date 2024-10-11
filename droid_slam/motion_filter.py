@@ -65,6 +65,9 @@ class MotionFilter:
         inputs = inputs.sub_(self.MEAN).div_(self.STDV)
 
         # extract features for the current image or pair if stereo
+
+        #import pdb; pdb.set_trace()
+
         gmap = self.__feature_encoder(inputs)
         
         # extraction feature
@@ -83,7 +86,10 @@ class MotionFilter:
             # on recup image[0] left uniquement
             # gmap stereo features net et inp left context features
             # gmap [2, 128, 40, 64] inp [1, 128, 40, 64] net [1, 128, 40, 64]
-            self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
+            #self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
+
+            self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0], inp[0])
+
 
         ### not first frame process correlation ###
         ### only add new frame if there is enough motion ###

@@ -187,6 +187,7 @@ def image_stream_stereo(imagedir, image_size=[320, 512], stereo=False, stride=1)
         intrinsics[2] *= image_size[1] / wd0
         intrinsics[3] *= image_size[0] / ht0
 
+
         yield t, images, intrinsics
 
 

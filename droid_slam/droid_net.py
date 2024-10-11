@@ -207,6 +207,8 @@ class DroidNet(nn.Module):
     def forward(self, Gs, images, disps, intrinsics, graph=None, num_steps=12, fixedp=2):
         """ Estimates SE3 or Sim3 between pair of frames """
 
+        import pdb; pdb.set_trace()
+
         #print("++++ forward method DroidNet")
         u = keyframe_indicies(graph)
         ii, jj, kk = graph_to_edge_list(graph)
