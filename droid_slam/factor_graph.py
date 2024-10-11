@@ -134,6 +134,9 @@ class FactorGraph:
             # camera 0 for left 1 for right if ii == jj in stereo case fmap2 use jj, 1 = ii, 1 so we use right and left cam
             c = (ii == jj).long()
 
+            if c.sum() != 0:
+                import pdb; pdb.set_trace()
+
             # pour le cas stereo on a self video fmaps [512,2,126,40,64]
             fmap1 = self.video.fmaps[ii,0].to(self.device).unsqueeze(0)
             fmap2 = self.video.fmaps[jj,c].to(self.device).unsqueeze(0)
@@ -142,6 +145,7 @@ class FactorGraph:
             corr = CorrBlock(fmap1, fmap2)
 
             self.corr = corr if self.corr is None else self.corr.cat(corr)
+
 
             # on recuperer les inputs de video
             # self video inps [512,128,40,64]
@@ -257,6 +261,8 @@ class FactorGraph:
 
         # update_op we use feature map of all edges in the graph ! its big permet de update net
         # self.net [1, number of edges , 128, 40, 64]
+
+        #import pdb; pdb.set_trace()
         self.net, delta, weight, damping, upmask = \
             self.update_op(self.net, self.inp, corr, motn, self.ii, self.jj)
 
@@ -299,7 +305,9 @@ class FactorGraph:
 
             self.video.ba(target, weight, damping, ii, jj, t0, t1, 
                 itrs=itrs, lm=1e-4, ep=0.1, motion_only=motion_only)
-        
+
+            #import pdb; pdb.set_trace()
+
             if self.upsample:
                 self.video.upsample(torch.unique(self.ii), upmask)
 

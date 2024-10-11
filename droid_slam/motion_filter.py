@@ -86,6 +86,8 @@ class MotionFilter:
             # on recup image[0] left uniquement
             # gmap stereo features net et inp left context features
             # gmap [2, 128, 40, 64] inp [1, 128, 40, 64] net [1, 128, 40, 64]
+            
+            # FAUX net et inp pas bon
             #self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
 
             self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0], inp[0])
@@ -98,6 +100,8 @@ class MotionFilter:
             # shape [1,1,40,64,2] size of feature maps
             # on a toutes les coords des pixels de img 40 par 64
             coords0 = pops.coords_grid(ht, wd, device=self.device)[None,None]
+
+            #import pdb; pdb.set_trace()
 
             # gmap new image et fmap previous
             
