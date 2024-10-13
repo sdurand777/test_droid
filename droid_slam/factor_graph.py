@@ -127,6 +127,8 @@ class FactorGraph:
 
         # extract net from video datasets
         # self.video.nets [512, 128, 40, 64] 512 buffer net lat'ent for convgry
+
+        # [1, num edges, 128, 40, 64]
         net = self.video.nets[ii].to(self.device).unsqueeze(0)
 
         # correlation volume for new edges
@@ -134,21 +136,29 @@ class FactorGraph:
             # camera 0 for left 1 for right if ii == jj in stereo case fmap2 use jj, 1 = ii, 1 so we use right and left cam
             c = (ii == jj).long()
 
-            if c.sum() != 0:
-                import pdb; pdb.set_trace()
+            # checker apparittion edges stereo 
+            # if c.sum() != 0:
+            #     import pdb; pdb.set_trace()
 
             # pour le cas stereo on a self video fmaps [512,2,126,40,64]
+            # fmapi [1, num edges, 128, 40, 64]
+
             fmap1 = self.video.fmaps[ii,0].to(self.device).unsqueeze(0)
             fmap2 = self.video.fmaps[jj,c].to(self.device).unsqueeze(0)
 
-            # on def un objet Corrblock
+            # on def un objet Corrblock pour les ii jj 
+            # corr shape
+            # [num edges, 40, 64, 40, 64]
+            # [num edges, 40, 64, 20, 32]
+            # [num edges, 40, 64, 10, 16]
+            # [num edges, 40, 64, 5, 8]
             corr = CorrBlock(fmap1, fmap2)
 
             self.corr = corr if self.corr is None else self.corr.cat(corr)
 
 
-            # on recuperer les inputs de video
-            # self video inps [512,128,40,64]
+            # on recuperer les inputs de video uniquement pour les indices ii frame initiale
+            # [1, num edges, 128, 40, 64]
             inp = self.video.inps[ii].to(self.device).unsqueeze(0)
             self.inp = inp if self.inp is None else torch.cat([self.inp, inp], 1)
 
@@ -156,6 +166,8 @@ class FactorGraph:
             # on utilise les poses dans video pour reproject
             target, _ = self.video.reproject(ii, jj)
             weight = torch.zeros_like(target)
+
+        import pdb; pdb.set_trace()
 
         # ajout au graph existant
         self.ii = torch.cat([self.ii, ii], 0)
