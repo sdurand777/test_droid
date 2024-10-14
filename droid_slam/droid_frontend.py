@@ -431,6 +431,9 @@ class DroidFrontend:
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
 
+
+        import pdb; pdb.set_trace()
+
         # update graph edges based on poses optimized from update so we can add new constraint to optimized the graph edges
         # we can compute the frame distance metric to update the graph
         # we add stereo edges here
@@ -444,6 +447,10 @@ class DroidFrontend:
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
 
+
+        import pdb; pdb.set_trace()
+
+
         # BA sur le graph optimise
         for itr in range(8):
             # update target using delta from raft
@@ -452,6 +459,8 @@ class DroidFrontend:
         #self.visualize_graph(frame_info+"INIT - Graph post BA", ii_0, jj_0)
 
         #self.visualize_projection(frame_info+"INIT - Graph post second BA")
+
+        import pdb; pdb.set_trace()
 
         # keep graph
         ii_0 = self.graph.ii.clone()
@@ -474,6 +483,9 @@ class DroidFrontend:
             self.video.ready.value = 1
             self.video.dirty[:self.t1] = True
 
+        import pdb; pdb.set_trace()
+
+        # on vire les edges dont les noeuds ii sont inferieur a 4
         self.graph.rm_factors(self.graph.ii < self.warmup-4, store=True)
 
         #self.visualize_graph(frame_info+"INIT - Graph final post rm_factors", ii_0, jj_0)

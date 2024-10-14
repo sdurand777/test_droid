@@ -251,7 +251,7 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # motion features
         with torch.cuda.amp.autocast(enabled=False):
@@ -404,7 +404,7 @@ class FactorGraph:
     def add_proximity_factors(self, t0=0, t1=0, rad=2, nms=2, beta=0.25, thresh=16.0, remove=False):
         """ add edges to the factor graph based on distance """
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         t = self.video.counter.value
 
