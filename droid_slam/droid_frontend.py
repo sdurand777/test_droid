@@ -422,6 +422,7 @@ class DroidFrontend:
         # BA sur le graph non optimiser
         for itr in range(8):
             # update target using delta from raft
+            # on utilise 1 pour t0 on optimise pas la pose de frame 0
             self.graph.update(1, use_inactive=True)
 
         #self.visualize_projection(frame_info+"INIT - Graph post premier BA")
@@ -431,6 +432,8 @@ class DroidFrontend:
         jj_0 = self.graph.jj.clone()
 
         # update graph edges based on poses optimized from update so we can add new constraint to optimized the graph edges
+        # we can compute the frame distance metric to update the graph
+        # we add stereo edges here
         self.graph.add_proximity_factors(0, 0, rad=2, nms=2, thresh=self.frontend_thresh, remove=False)
 
         #self.visualize_graph(frame_info+"INIT - Graph post add_proximity_factors", ii_0, jj_0)

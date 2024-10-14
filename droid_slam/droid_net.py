@@ -43,6 +43,7 @@ def upsample_disp(disp, mask):
     return cvx_upsample(disp, mask).view(batch, num, 8*ht, 8*wd)
 
 
+# on passe de edges a nodes on agg les edges pour avoir information au niveau des noeuds uniques du graph on passe de tensor num edges en tensor num nodes
 class GraphAgg(nn.Module):
     def __init__(self):
         super(GraphAgg, self).__init__()

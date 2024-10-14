@@ -169,7 +169,7 @@ class DepthVideo:
     def distance(self, ii=None, jj=None, beta=0.3, bidirectional=True):
         """ frame distance metric """
 
-        #import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
         return_matrix = False
         if ii is None:
