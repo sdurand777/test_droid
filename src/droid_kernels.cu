@@ -1560,11 +1560,15 @@ std::vector<torch::Tensor> ba_cuda(
         // we build motion part only B for lhs et v for rhs
 
         // left hand side with hessian
+        // on utilise le graph ii ii jj jj car Hs de la forme [num edges, 4, 6, 6] car on construit hii hij hji hjj les 4 sous bloc de hs pour chaque edge
+        // on va recuperer hs [num nodes * 6, num nodes * 6]
         A.update_lhs(Hs.reshape({-1, 6, 6}), 
                 torch::cat({ii, ii, jj, jj}) - t0, 
                 torch::cat({ii, jj, ii, jj}) - t0);
 
         // right hand side with vs
+        // on a vs de la forme [num edges, 2, 6] 2 pour chaque noeud d'un edge
+        // pareil on recupere vs [num nodes *6]
         A.update_rhs(vs.reshape({-1, 6}), 
                 torch::cat({ii, jj}) - t0);
 
@@ -1583,16 +1587,26 @@ std::vector<torch::Tensor> ba_cuda(
             //const float alpha = 0.05;
             const float alpha = 0.0005;
             //printf("====== alpha 0.0005 \n");
+            // mask sur la disparite pour construire les autres matrices base sur la depth
             torch::Tensor m = (disps_sens.index({kx, "..."}) > 0).to(torch::TensorOptions().dtype(torch::kFloat32)).view({-1, ht*wd}); // mask sur les valeurs de disparites
+
+            // matrice HDD ou matrice des depths qui est diagonale 
             torch::Tensor C = accum_cuda(Cii, ii, kx) + m * alpha + (1 - m) * eta.view({-1, ht*wd}); // matrice de covariance final matrix of disp
+
+            // vecteur des depth on weight la confidence sur les disps de chaque pixel avec wi issu du raft
             torch::Tensor w = accum_cuda(wi, ii, kx) - m * alpha * (disps.index({kx, "..."}) - disps_sens.index({kx, "..."})).view({-1, ht*wd}); // confidence weight
+
+            // on inverse facilement C
             torch::Tensor Q = 1.0 / C; // inverse matrix depth
 
+            // on construire la matrice Ei des poses i pas les depths
             torch::Tensor Ei = accum_cuda(Eii.view({num, 6*ht*wd}), ii, ts).view({t1-t0, 6, ht*wd});
+            // on cancat avec Eij la matrice des poses j avec les depths WTF ???
             torch::Tensor E = torch::cat({Ei, Eij}, 0);
 
             // build schur block for the depth information using E and Q
             // we have the lhs EQEt et rhs EQw
+            // Attenstion assemblage incomprehensible dans shur_block pour obtenir E trop bizarre
             SparseBlock S = schur_block(E, Q, w, ii_exp, jj_exp, kk_exp, t0, t1); // schur problem
 
             // solve for dx for the update pose
@@ -1602,6 +1616,7 @@ std::vector<torch::Tensor> ba_cuda(
             torch::Tensor ix = jj_exp - t0;
             torch::Tensor dw = torch::zeros({ix.size(0), ht*wd}, opts);
 
+            // on contruit les vecteur ETw pour obtenir dz voir document bundle-adjusment
             EvT6x1_kernel<<<ix.size(0), THREADS>>>(
                     E.packed_accessor32<float,3,torch::RestrictPtrTraits>(),
                     dx.packed_accessor32<float,2,torch::RestrictPtrTraits>(),

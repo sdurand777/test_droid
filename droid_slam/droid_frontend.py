@@ -193,6 +193,8 @@ class DroidFrontend:
                 jj_0 = self.graph.jj.clone()
 
         # update graph with proximity factors init target and weight based on initial guess of pose and disp of previous iteration using video.reproject
+        # on considere les nodes entre t1 - 5 et t1 - 25
+        # On met a jour le graph avec la nouvelle keyframe detecte dans le motion filter on rappelle que cela permet notamment dans le cas stereo de rajouter le edge stereo de la nouvelle keyframe
         self.graph.add_proximity_factors(self.t1-5, max(self.t1-self.frontend_window, 0), 
             rad=self.frontend_radius, nms=self.frontend_nms, thresh=self.frontend_thresh, beta=self.beta, remove=True)
 
@@ -432,7 +434,7 @@ class DroidFrontend:
         jj_0 = self.graph.jj.clone()
 
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # update graph edges based on poses optimized from update so we can add new constraint to optimized the graph edges
         # we can compute the frame distance metric to update the graph
@@ -448,7 +450,7 @@ class DroidFrontend:
         jj_0 = self.graph.jj.clone()
 
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
 
         # BA sur le graph optimise
@@ -460,7 +462,7 @@ class DroidFrontend:
 
         #self.visualize_projection(frame_info+"INIT - Graph post second BA")
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # keep graph
         ii_0 = self.graph.ii.clone()
@@ -483,7 +485,7 @@ class DroidFrontend:
             self.video.ready.value = 1
             self.video.dirty[:self.t1] = True
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         # on vire les edges dont les noeuds ii sont inferieur a 4
         self.graph.rm_factors(self.graph.ii < self.warmup-4, store=True)

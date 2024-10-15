@@ -164,6 +164,7 @@ class FactorGraph:
 
         with torch.cuda.amp.autocast(enabled=False):
             # on utilise les poses dans video pour reproject
+            # attention ici target uniquement pour les nouveaux edges ii jj pas self.ii self.jj du coup lors du graph.update self.target sera forcement different de coords1de video.reproject la seule fois ou coords1 et self.target sont egaux est lors de frontend_initialize du premier update
             target, _ = self.video.reproject(ii, jj)
             weight = torch.zeros_like(target)
 
