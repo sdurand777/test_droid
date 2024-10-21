@@ -209,6 +209,7 @@ class DepthVideo:
         """ dense bundle adjustment (DBA) """
 
 
+
         with self.get_lock():
 
             # [t0, t1] window of bundle adjustment optimization
