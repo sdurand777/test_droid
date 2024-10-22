@@ -19,5 +19,6 @@ services:
       - /home/ivm/droid_dev/:/home/smith/droid_dev/
       - /home/ivm/test_cuda_python/:/home/smith/test_cuda_python/
       - /home/ivm/config_neovim/:/home/smith/.config/nvim/
+      - /home/ivm/test_pipe/:/home/smith/test_pipe/
     tty: true
 

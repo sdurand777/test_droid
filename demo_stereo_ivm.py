@@ -261,7 +261,7 @@ if __name__ == '__main__':
 
     #parser.add_argument("--imagedir", default="/home/ivm/Selective-Stereo/Selective-IGEV/test_video" ,type=str, help="path to image directory")
 
-    parser.add_argument("--imagedir", default="./test_pipe" ,type=str, help="path to image directory")
+    parser.add_argument("--imagedir", default="/home/smith/test_pipe" ,type=str, help="path to image directory")
 
 
     parser.add_argument("--calib", type=str, help="path to calibration file")

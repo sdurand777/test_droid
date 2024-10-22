@@ -239,7 +239,7 @@ class DepthVideo:
             container = torch.jit.script(Container(my_values))
             container.save("container.pt")
 
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
 
             # eta c'est le damping
             droid_backends.ba(self.poses, self.disps, self.intrinsics[0], self.disps_sens,
