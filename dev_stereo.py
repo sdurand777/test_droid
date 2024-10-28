@@ -236,7 +236,9 @@ if __name__ == '__main__':
 
 
     # disable vis
-    parser.add_argument("--disable_vis", action="store_false")
+    #parser.add_argument("--disable_vis", action="store_false")
+    # enable vis
+    parser.add_argument("--disable_vis", action="store_true")
 
 
 

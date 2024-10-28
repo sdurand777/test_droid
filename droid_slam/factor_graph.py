@@ -125,6 +125,28 @@ class FactorGraph:
             ix = torch.arange(len(self.age))[torch.argsort(self.age).cpu()]
             self.rm_factors(ix >= self.max_factors - ii.shape[0], store=True)
 
+        # ------- recupere toutes les data pour la suite les features map correlations et reprojection pour le BA et la methode update de la classe graph
+
+
+        # ajout edges stereo
+        # Obtenons la liste des nœuds uniques
+        nodes = torch.unique(torch.cat([ii, jj]))
+
+        # Créons les self-loops
+        self_loops = nodes  # car chaque noeud aura un self-loop
+
+        # Ajoutons les self-loops aux tensors existants
+        ii_with_loops = torch.cat([ii, self_loops])
+        jj_with_loops = torch.cat([jj, self_loops])
+
+        print(ii_with_loops)
+        print(jj_with_loops)
+        
+        ii = ii_with_loops
+        jj = jj_with_loops
+
+        #import pdb; pdb.set_trace()
+
         # extract net from video datasets
         # self.video.nets [512, 128, 40, 64] 512 buffer net lat'ent for convgry
 
