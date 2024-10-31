@@ -90,7 +90,8 @@ class MotionFilter:
             # FAUX net et inp pas bon
             #self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0])
 
-            self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0], inp[0])
+            #self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0], inp[0])
+            self.video.append(tstamp, image, Id, 1.0, depth, intrinsics / 8.0, gmap, net[0], inp[0])
 
 
         ### not first frame process correlation ###
@@ -135,7 +136,8 @@ class MotionFilter:
 
                 # update video with new frame tstamp frame index to update video counter
                 # None for pose will be estimated later
-                self.video.append(tstamp, image[0], None, None, depth, intrinsics / 8.0, gmap, net[0], inp[0])
+                #self.video.append(tstamp, image[0], None, None, depth, intrinsics / 8.0, gmap, net[0], inp[0])
+                self.video.append(tstamp, image, None, None, depth, intrinsics / 8.0, gmap, net[0], inp[0])
     
             else:
                 # update counter of frame with no enough motion

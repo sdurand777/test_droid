@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from lietorch import SE3
 from modules.corr import CorrBlock, AltCorrBlock
 
+from PIL import Image, ImageDraw
+
 
 import droid_net
 
@@ -268,6 +270,47 @@ class FactorGraph:
         self.rm_factors(m, store=False)
 
 
+    # methode pour visualiser les projections
+    def vis_repro(self, indice_i = 0, indice_j = 0, coords = None):
+        # recuperation des coords
+        mask_ii = self.ii == indice_i
+        mask_jj = self.jj == indice_j
+        edges_mask = mask_ii & mask_jj
+        indices = torch.nonzero(edges_mask, as_tuple=True)
+        if indices[0].numel() == 0:
+            print("pas de edges correspondants")
+            return  # Exit the function if the tensor is empty
+        coords_repro = coords[0][indices]
+
+        height = self.video.images.shape[4]
+        width = self.video.images.shape[4]
+
+        coords_repro = coords_repro[0].view(-1, 2)
+        valid_mask = (coords_repro[:, 0] >= 0) & (coords_repro[:, 0] < width) & (coords_repro[:, 1] >= 0) & (coords_repro[:, 1] < height)
+
+# Filter the coordinates using the mask
+        coords_repro = coords_repro[valid_mask] * 8
+
+        image_origin = self.video.images[indice_i][0]
+        image_stereo = self.video.images[indice_i][1]
+
+        # left target
+        image_target = self.video.images[indice_j][0].permute(1,2,0)
+
+        import pdb; pdb.set_trace()
+
+        image_target_pil = Image.fromarray(image_target.cpu().numpy().astype('uint8'))
+# Draw points on the image
+        points = [tuple(coord) for coord in coords_repro.tolist()]
+        draw = ImageDraw.Draw(image_target_pil)
+        draw.point(points, fill="red")  # You can choose a color like "red"
+    
+        import pdb; pdb.set_trace()
+
+
+    # # methode pour calculer les correlations
+    # def compute_corr():
+
 
 
     @torch.cuda.amp.autocast(enabled=True)
@@ -287,6 +330,9 @@ class FactorGraph:
             # reshape motn from [1,22,40,64,4] tp [1,22,4,40,64]
             motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
         
+
+        self.vis_repro(0,2,coords1)
+
         # correlation features lookup with coords1
         # Call CorrBlock_call method to lookup within corr
         
@@ -341,7 +387,7 @@ class FactorGraph:
             self.video.ba(target, weight, damping, ii, jj, t0, t1, 
                 itrs=itrs, lm=1e-4, ep=0.1, motion_only=motion_only)
 
-            #import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
 
             if self.upsample:
                 self.video.upsample(torch.unique(self.ii), upmask)
