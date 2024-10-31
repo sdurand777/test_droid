@@ -272,6 +272,9 @@ class FactorGraph:
 
     # methode pour visualiser les projections
     def vis_repro(self, indice_i = 0, indice_j = 0, coords = None):
+        height = self.video.images.shape[4]
+        width = self.video.images.shape[4]
+
         # recuperation des coords
         mask_ii = self.ii == indice_i
         mask_jj = self.jj == indice_j
@@ -282,17 +285,31 @@ class FactorGraph:
             return  # Exit the function if the tensor is empty
         coords_repro = coords[0][indices]
 
-        height = self.video.images.shape[4]
-        width = self.video.images.shape[4]
-
         coords_repro = coords_repro[0].view(-1, 2)
         valid_mask = (coords_repro[:, 0] >= 0) & (coords_repro[:, 0] < width) & (coords_repro[:, 1] >= 0) & (coords_repro[:, 1] < height)
 
 # Filter the coordinates using the mask
         coords_repro = coords_repro[valid_mask] * 8
 
+        # recuperation des coords stereo
+        mask_ii = self.ii == indice_i
+        mask_jj = self.jj == indice_i
+        stereo_mask = mask_ii & mask_jj
+        indices = torch.nonzero(stereo_mask, as_tuple=True)
+        if indices[0].numel() == 0:
+            print("pas de edges stereo correspondants")
+            return  # Exit the function if the tensor is empty
+        coords_stereo = coords[0][indices]
+
+        coords_stereo = coords_stereo[0].view(-1, 2)
+        valid_mask = (coords_stereo[:, 0] >= 0) & (coords_stereo[:, 0] < width) & (coords_stereo[:, 1] >= 0) & (coords_stereo[:, 1] < height)
+
+# Filter the coordinates using the mask
+        coords_stereo = coords_stereo[valid_mask] * 8
+
         image_origin = self.video.images[indice_i][0]
-        image_stereo = self.video.images[indice_i][1]
+
+        image_stereo = self.video.images[indice_i][1].permute(1,2,0)
 
         # left target
         image_target = self.video.images[indice_j][0].permute(1,2,0)
@@ -305,11 +322,31 @@ class FactorGraph:
         draw = ImageDraw.Draw(image_target_pil)
         draw.point(points, fill="red")  # You can choose a color like "red"
     
+        image_stereo_pil = Image.fromarray(image_stereo.cpu().numpy().astype('uint8'))
+# Draw points on the image
+        points = [tuple(coord) for coord in coords_stereo.tolist()]
+        draw = ImageDraw.Draw(image_stereo_pil)
+        draw.point(points, fill="red")  # You can choose a color like "red"
+ 
         import pdb; pdb.set_trace()
 
 
-    # # methode pour calculer les correlations
-    # def compute_corr():
+    # # # methode pour calculer les correlations
+    def compute_corr(self, indice_i, indice_j, correlation):
+        # recuperation des coords
+        mask_ii = self.ii == indice_i
+        mask_jj = self.jj == indice_j
+        edges_mask = mask_ii & mask_jj
+        indices = torch.nonzero(edges_mask, as_tuple=True)
+        if indices[0].numel() == 0:
+            print("pas de edges correspondants")
+            return  # Exit the function if the tensor is empty
+        correlation = torch.mean(correlation[0][indices])
+
+        print("correlation : ", correlation)
+
+
+
 
 
 
@@ -331,7 +368,6 @@ class FactorGraph:
             motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
         
 
-        self.vis_repro(0,2,coords1)
 
         # correlation features lookup with coords1
         # Call CorrBlock_call method to lookup within corr
@@ -342,6 +378,10 @@ class FactorGraph:
 
         # update_op we use feature map of all edges in the graph ! its big permet de update net
         # self.net [1, number of edges , 128, 40, 64]
+
+        import pdb; pdb.set_trace()
+
+        self.vis_repro(0,2,coords1)
 
         #import pdb; pdb.set_trace()
         self.net, delta, weight, damping, upmask = \
