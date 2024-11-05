@@ -54,10 +54,17 @@ class Droid:
         state_dict = OrderedDict([
             (k.replace("module.", ""), v) for (k, v) in torch.load(weights).items()])
 
+        # couche du model pour prediction delta et weight
         state_dict["update.weight.2.weight"] = state_dict["update.weight.2.weight"][:2]
         state_dict["update.weight.2.bias"] = state_dict["update.weight.2.bias"][:2]
         state_dict["update.delta.2.weight"] = state_dict["update.delta.2.weight"][:2]
         state_dict["update.delta.2.bias"] = state_dict["update.delta.2.bias"][:2]
+
+
+        #import pdb; pdb.set_trace()
+
+
+
 
         # load weights
         self.net.load_state_dict(state_dict)
@@ -70,39 +77,11 @@ class Droid:
     def track(self, tstamp, image, depth=None, intrinsics=None):
         """ main thread - update map """
         
-        # print("-------- tracking")
-        #
-        # print("-------- depth shape : ", depth.shape)
-        # 
-        # Calculer et afficher les valeurs minimales et maximales
-        # min_val = torch.min(depth)
-        # max_val = torch.max(depth)
-        # print("-------- min depth value : ", min_val.item())
-        # print("-------- max depth value : ", max_val.item())
-        
-        # Afficher le tenseur depth sous forme d'image
-        # plt.imshow(depth.cpu().numpy(), cmap='viridis')
-        # plt.colorbar()
-        # plt.title('Depth Image')
-        # plt.show()
-
         with torch.no_grad():
 
-            # before motion track
-#             import pdb; pdb.set_trace()
-
-            # check there is enough motion
-            # append to video network and image
             self.filterx.track(tstamp, image, depth, intrinsics)
 
-            # after track
-#             import pdb; pdb.set_trace()
-
-            # local bundle adjustment
             self.frontend()
-
-            # local ba
-#             import pdb; pdb.set_trace()
 
 
     def terminate(self, stream=None):

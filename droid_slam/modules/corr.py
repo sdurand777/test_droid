@@ -61,7 +61,7 @@ class CorrBlock:
             
     def __call__(self, coords):
 
-        print("-- call CorrBlock call method ---")
+        #print("-- call CorrBlock call method ---")
 
         #print("self", self)
 

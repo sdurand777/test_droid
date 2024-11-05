@@ -64,15 +64,8 @@ class MotionFilter:
         inputs = image[None, :, [2,1,0]].to(self.device) / 255.0
         inputs = inputs.sub_(self.MEAN).div_(self.STDV)
 
-        # extract features for the current image or pair if stereo
-
-        #import pdb; pdb.set_trace()
-
         gmap = self.__feature_encoder(inputs)
         
-        # extraction feature
-        #import pdb; pdb.set_trace()
-
         ### always add first frame to the depth video ###
         if self.video.counter.value == 0:
             # extract features map

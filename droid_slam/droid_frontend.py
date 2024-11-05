@@ -393,33 +393,7 @@ class DroidFrontend:
         self.t0 = 0
         self.t1 = self.video.counter.value
         
-        frame_info = "Frame " + str(self.count) + " Keyframes " + str(self.t1 - 1) + " "
-
-
-        # build initial target based on pose
-        # initialize target and update net inp etc in add_factors for new edges for factorgraph from video
-
-        # print("self.graph.net.shape ", self.graph.net.shape)
-        # print("self.graph.inp.shape ", self.graph.inp.shape)
-
-        last_nonzero_index = (torch.sum(self.video.fmaps.view(self.video.fmaps.shape[0], -1), dim=1) != 0).nonzero(as_tuple=False).max().item()
-        print("video fmaps size : ", last_nonzero_index)
-
         self.graph.add_neighborhood_factors(self.t0, self.t1, r=3)
-
-        # Étape 1 : Identifier les images non nulles
-        non_null_indices = torch.any(self.video.images.view( self.video.images.shape[0], -1) != 0, dim=1)
-
-        # Étape 2 : Extraire les images non nulles
-        non_null_images = self.video.images[non_null_indices]
-
-        # Affichage pour vérification
-        #print(non_null_images)
-        print("non_null_images.shape ", non_null_images.shape)
-
-        #self.visualize_projection(frame_info+"INIT - Graph")
-
-        #self.visualize_graph(frame_info+"INIT - Graph")
 
         # BA sur le graph non optimiser
         for itr in range(8):
@@ -427,42 +401,23 @@ class DroidFrontend:
             # on utilise 1 pour t0 on optimise pas la pose de frame 0
             self.graph.update(1, use_inactive=True)
 
-        #self.visualize_projection(frame_info+"INIT - Graph post premier BA")
-
         # keep graph
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
-
-
-        #import pdb; pdb.set_trace()
 
         # update graph edges based on poses optimized from update so we can add new constraint to optimized the graph edges
         # we can compute the frame distance metric to update the graph
         # we add stereo edges here
         self.graph.add_proximity_factors(0, 0, rad=2, nms=2, thresh=self.frontend_thresh, remove=False)
 
-        #self.visualize_graph(frame_info+"INIT - Graph post add_proximity_factors", ii_0, jj_0)
-        
-        #self.visualize_projection(frame_info+"INIT - Graph post add_proximity_factors")
-
         # keep graph
         ii_0 = self.graph.ii.clone()
         jj_0 = self.graph.jj.clone()
-
-
-        #import pdb; pdb.set_trace()
-
 
         # BA sur le graph optimise
         for itr in range(8):
             # update target using delta from raft
             self.graph.update(1, use_inactive=True)
-
-        #self.visualize_graph(frame_info+"INIT - Graph post BA", ii_0, jj_0)
-
-        #self.visualize_projection(frame_info+"INIT - Graph post second BA")
-
-        #import pdb; pdb.set_trace()
 
         # keep graph
         ii_0 = self.graph.ii.clone()
@@ -485,19 +440,8 @@ class DroidFrontend:
             self.video.ready.value = 1
             self.video.dirty[:self.t1] = True
 
-        #import pdb; pdb.set_trace()
-
         # on vire les edges dont les noeuds ii sont inferieur a 4
         self.graph.rm_factors(self.graph.ii < self.warmup-4, store=True)
-
-        #self.visualize_graph(frame_info+"INIT - Graph final post rm_factors", ii_0, jj_0)
-
-        #self.visualize_projection(frame_info+"INIT - Graph post rm factors")
-
-        # keep graph
-        ii_0 = self.graph.ii.clone()
-        jj_0 = self.graph.jj.clone()
-
 
 
 

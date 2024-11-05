@@ -23,61 +23,15 @@ def show_image(image):
     cv2.waitKey(1)
 
 
-
-# def image_stream(imagedir, calib, stride):
-#     """ image generator """
-#
-#     # calib = np.loadtxt(calib, delimiter=" ")
-#     # fx, fy, cx, cy = calib[:4]
-#     #
-#     # K = np.eye(3)
-#     # K[0,0] = fx
-#     # K[0,2] = cx
-#     # K[1,1] = fy
-#     # K[1,2] = cy
-#
-#     image_list = sorted(os.listdir(imagedir))[::stride]
-#
-#     for t, imfile in enumerate(image_list):
-#         image = cv2.imread(os.path.join(imagedir, imfile))
-#         # if len(calib) > 4:
-#         #     image = cv2.undistort(image, K, calib[4:])
-#
-#         h0, w0, _ = image.shape
-#         h1 = int(h0 * np.sqrt((384 * 512) / (h0 * w0)))
-#         w1 = int(w0 * np.sqrt((384 * 512) / (h0 * w0)))
-#
-#         image = cv2.resize(image, (w1, h1))
-#         image = image[:h1-h1%8, :w1-w1%8]
-#         image = torch.as_tensor(image).permute(2, 0, 1)
-#
-#         intrinsics = torch.as_tensor([fx, fy, cx, cy])
-#         intrinsics[0::2] *= (w1 / w0)
-#         intrinsics[1::2] *= (h1 / h0)
-#
-#         yield t, image[None], intrinsics
-
-
-
-
-
 def image_stream_depth_stereo(datapath, use_depth=False, stride=1):
     """ image generator """
-
-    #fx, fy, cx, cy = np.loadtxt(os.path.join(datapath, 'calibration.txt')).tolist()
-    #image_list = sorted(glob.glob(os.path.join(datapath, 'rgb', '*.png')))[::stride]
-    #image_list = sorted(glob.glob(os.path.join(datapath, 'rgb', '*.JPG')))[::stride]
-
-    #depth_list = sorted(glob.glob(os.path.join(datapath, 'depth', '*.png')))[::stride]
 
     image_list_l = sorted(glob.glob(os.path.join(datapath, 'left', '*.JPG')))[::stride]
     image_list_r = sorted(glob.glob(os.path.join(datapath, 'right', '*.JPG')))[::stride]
     
     depth_list = sorted(glob.glob(os.path.join(datapath, 'depth', '*.npy')))[::stride]
 
-
     image_size=[320, 512]
-
 
     K_l = np.array([322.580, 0.0, 259.260, 0.0, 322.580, 184.882, 0.0, 0.0, 1.0]).reshape(3,3)
     d_l = np.array([-0.070162237, 0.07551153, 0.0012286149,  0.00099302817, -0.018171599])
@@ -93,7 +47,6 @@ def image_stream_depth_stereo(datapath, use_depth=False, stride=1):
         ]).reshape(3,4)
     map_l = cv2.initUndistortRectifyMap(K_l, d_l, R_l, P_l[:3,:3], (514, 376), cv2.CV_32F)
    
-    print("------------ Right pre rectification ------------------")
     K_r = np.array([
 322.638671875, 0, 255.9466552734375,
  0, 322.638671875, 187.4475402832031,
@@ -126,11 +79,8 @@ def image_stream_depth_stereo(datapath, use_depth=False, stride=1):
     #for t, (image_file, depth_file) in enumerate(zip(image_list, depth_list)):
     for t, (imfile_l, imfile_r, depth_file) in enumerate(zip(image_list_l, image_list_r, depth_list)):
         #image = cv2.imread(image_file)
-        print("------- image paths ------")
         images_left = imfile_l
-        print(images_left)
         images_right = imfile_r
-        print(images_right)
         images = [cv2.remap(cv2.imread(images_left), map_l[0], map_l[1], interpolation=cv2.INTER_LINEAR)]
         images += [cv2.remap(cv2.imread(images_right), map_r[0], map_r[1], interpolation=cv2.INTER_LINEAR)]
         images = torch.from_numpy(np.stack(images, 0))
@@ -163,39 +113,11 @@ def image_stream_depth_stereo(datapath, use_depth=False, stride=1):
 
 
 
-def save_reconstruction(droid, reconstruction_path):
-
-    from pathlib import Path
-    import random
-    import string
-
-    t = droid.video.counter.value
-    tstamps = droid.video.tstamp[:t].cpu().numpy()
-    images = droid.video.images[:t].cpu().numpy()
-    disps = droid.video.disps_up[:t].cpu().numpy()
-    poses = droid.video.poses[:t].cpu().numpy()
-    intrinsics = droid.video.intrinsics[:t].cpu().numpy()
-
-    Path("reconstructions/{}".format(reconstruction_path)).mkdir(parents=True, exist_ok=True)
-    np.save("reconstructions/{}/tstamps.npy".format(reconstruction_path), tstamps)
-    np.save("reconstructions/{}/images.npy".format(reconstruction_path), images)
-    np.save("reconstructions/{}/disps.npy".format(reconstruction_path), disps)
-    np.save("reconstructions/{}/poses.npy".format(reconstruction_path), poses)
-    np.save("reconstructions/{}/intrinsics.npy".format(reconstruction_path), intrinsics)
-
-
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser()
-    #parser.add_argument("--imagedir", type=str, help="path to image directory")
-    
-
-    #parser.add_argument("--imagedir", default="/home/ivm/Selective-Stereo/Selective-IGEV/test_video_light" ,type=str, help="path to image directory")
-
-    #parser.add_argument("--imagedir", default="/home/ivm/Selective-Stereo/Selective-IGEV/test_video" ,type=str, help="path to image directory")
-
 
     parser.add_argument("--imagedir", default="../test_pipe" ,type=str, help="path to image directory")
-
 
     parser.add_argument("--calib", type=str, help="path to calibration file")
     parser.add_argument("--t0", default=0, type=int, help="starting frame")
@@ -239,8 +161,6 @@ if __name__ == '__main__':
     #for (t, image, intrinsics) in tqdm(image_stream(args.imagedir, args.calib, args.stride)):
     stride=1
 
-    print("args.imagedir : ",args.imagedir)
-
     for (t, image, depth, intrinsics) in tqdm(image_stream_depth_stereo(args.imagedir, use_depth=True, stride=stride)):
         if t < args.t0:
             continue
@@ -255,18 +175,4 @@ if __name__ == '__main__':
         #droid.track(t, image, intrinsics=intrinsics)
         droid.track(t, image, depth, intrinsics=intrinsics)
 
-    # del droid.frontend
-    #
-    # torch.cuda.empty_cache()
-    # print("#" * 32)
-    # droid.backend(7)
-    # torch.cuda.empty_cache()
-    # print("#" * 32)
-    # droid.backend(12)
 
-
-
-    # if args.reconstruction_path is not None:
-    #     save_reconstruction(droid, args.reconstruction_path)
-
-    #traj_est = droid.terminate(image_stream(args.imagedir, args.calib, args.stride))

@@ -77,6 +77,7 @@ class DepthVideo:
 
         if item[4] is not None:
             depth = item[4][3::8,3::8]
+            # ici on inverse depth pour obtenir la disparite
             self.disps_sens[index] = torch.where(depth>0, 1.0/depth, depth)
         if item[5] is not None:
             self.intrinsics[index] = item[5]

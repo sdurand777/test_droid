@@ -59,7 +59,7 @@ class FactorGraph:
 
     def __filter_repeated_edges(self, ii, jj):
         """ remove duplicate edges """
-        print("# filter_repeated_edges")
+        #print("# filter_repeated_edges")
 
         keep = torch.zeros(ii.shape[0], dtype=torch.bool, device=ii.device)
         eset = set(
@@ -281,7 +281,7 @@ class FactorGraph:
         edges_mask = mask_ii & mask_jj
         indices = torch.nonzero(edges_mask, as_tuple=True)
         if indices[0].numel() == 0:
-            print("pas de edges correspondants")
+            #print("pas de edges correspondants")
             return  # Exit the function if the tensor is empty
         coords_repro = coords[0][indices]
 
@@ -297,7 +297,7 @@ class FactorGraph:
         stereo_mask = mask_ii & mask_jj
         indices = torch.nonzero(stereo_mask, as_tuple=True)
         if indices[0].numel() == 0:
-            print("pas de edges stereo correspondants")
+            #print("pas de edges stereo correspondants")
             return  # Exit the function if the tensor is empty
         coords_stereo = coords[0][indices]
 
@@ -314,7 +314,7 @@ class FactorGraph:
         # left target
         image_target = self.video.images[indice_j][0].permute(1,2,0)
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
         image_target_pil = Image.fromarray(image_target.cpu().numpy().astype('uint8'))
 # Draw points on the image
@@ -328,7 +328,7 @@ class FactorGraph:
         draw = ImageDraw.Draw(image_stereo_pil)
         draw.point(points, fill="red")  # You can choose a color like "red"
  
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
 
     # # # methode pour calculer les correlations
@@ -354,8 +354,6 @@ class FactorGraph:
     def update(self, t0=None, t1=None, itrs=2, use_inactive=False, EP=1e-7, motion_only=False):
         """ run update operator on factor graph """
         
-        #import pdb; pdb.set_trace()
-
         # motion features
         with torch.cuda.amp.autocast(enabled=False):
             # initial target guess based on poses from video pij
@@ -367,8 +365,6 @@ class FactorGraph:
             # reshape motn from [1,22,40,64,4] tp [1,22,4,40,64]
             motn = motn.permute(0,1,4,2,3).clamp(-64.0, 64.0)
         
-
-
         # correlation features lookup with coords1
         # Call CorrBlock_call method to lookup within corr
         
@@ -379,13 +375,17 @@ class FactorGraph:
         # update_op we use feature map of all edges in the graph ! its big permet de update net
         # self.net [1, number of edges , 128, 40, 64]
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
-        self.vis_repro(0,2,coords1)
+        #self.vis_repro(0,2,coords1)
 
         #import pdb; pdb.set_trace()
         self.net, delta, weight, damping, upmask = \
             self.update_op(self.net, self.inp, corr, motn, self.ii, self.jj)
+
+
+        #import pdb; pdb.set_trace()
+
 
         if t0 is None:
             t0 = max(1, self.ii.min().item()+1)
@@ -422,12 +422,8 @@ class FactorGraph:
 
             # BUNDLE ADJUSTMENT
 
-            #import pdb; pdb.set_trace()
-
             self.video.ba(target, weight, damping, ii, jj, t0, t1, 
                 itrs=itrs, lm=1e-4, ep=0.1, motion_only=motion_only)
-
-            import pdb; pdb.set_trace()
 
             if self.upsample:
                 self.video.upsample(torch.unique(self.ii), upmask)
@@ -598,4 +594,46 @@ class FactorGraph:
         ii, jj = torch.as_tensor(es, device=self.device).unbind(dim=-1)
 
         self.add_factors(ii, jj, remove)
+
+
+
+
+    def flatmeshgrid(*args, **kwargs):
+        grid = torch.meshgrid(*args, **kwargs)
+        return (x.reshape(-1) for x in grid)
+
+
+    # def edges_loop(self):
+    #     """ Adding edges from old patches to new frames """
+    #     lc_range = 1000
+    #     l = self.video.counter.value - 22 # l is the upper bound for "old" patches
+    #
+    #     if l <= 0:
+    #         return torch.empty(2, 0, dtype=torch.long, device='cuda')
+    #
+    #     # create candidate edges
+    #     jj, kk = self.flatmeshgrid(
+    #         torch.arange(self.video.counter.value - 15, self.video.counter.value - 4, device="cuda"),
+    #         torch.arange(max(l - lc_range, 0) * self.M, l * self.M, device="cuda"), indexing='ij')
+    #     ii = self.ix[kk]
+    #
+    #     # Remove edges which have too large flow magnitude
+    #     flow_mg, val = pops.flow_mag(SE3(self.poses), self.patches[...,1,1].view(1,-1,3,1,1), self.intrinsics, ii, jj, kk, beta=0.5)
+    #     flow_mg_sum = reduce(flow_mg * val, '1 (fl M) 1 1 -> fl', 'sum', M=self.M).float()
+    #     num_val = reduce(val, '1 (fl M) 1 1 -> fl', 'sum', M=self.M).clamp(min=1)
+    #     flow_mag = torch.where(num_val > (self.M * 0.75), flow_mg_sum / num_val, torch.inf)
+    #
+    #     mask = (flow_mag < 64)
+    #     es = reduce_edges(asnumpy(flow_mag[mask]), asnumpy(ii[::self.M][mask]), asnumpy(jj[::self.M][mask]), max_num_edges=1000, nms=1)
+    #
+    #     edges = torch.as_tensor(es, device=ii.device)
+    #     ii, jj = repeat(edges, 'E ij -> ij E M', M=self.M, ij=2)
+    #     kk = ii.mul(self.M) + torch.arange(self.M, device=ii.device)
+    #     return kk.flatten(), jj.flatten()
+
+
+
+
+
+
 

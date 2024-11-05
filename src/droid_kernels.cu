@@ -739,10 +739,6 @@ __global__ void depth_filter_kernel(
     // loop over index
     const int index = blockIdx.z * blockDim.x + threadIdx.x;
 
-    // if (threadIdx.x == 0) {
-    //   printf("%d %d %d %d\n", blockIdx.x, blockIdx.y, blockDim.x, threadIdx.x);
-    // }
-
     // recuperation des dimensions de disps
     const int num = disps.size(0);
     const int ht = disps.size(1);
@@ -1511,13 +1507,8 @@ std::vector<torch::Tensor> ba_cuda(
 
     torch::Tensor ts = torch::arange(t0, t1).to(torch::kCUDA); // ts fpr time frame fpr BA
 
-    std::cout << ts << std::endl;
-
     torch::Tensor ii_exp = torch::cat({ts, ii}, 0); 
     torch::Tensor jj_exp = torch::cat({ts, jj}, 0);
-
-    std::cout << ii_exp << std::endl;
-    std::cout << jj_exp << std::endl;
 
     std::tuple<torch::Tensor, torch::Tensor> kuniq = 
         torch::_unique(ii_exp, true, true);
@@ -1639,12 +1630,6 @@ std::vector<torch::Tensor> ba_cuda(
         }
 
     }
-
-    std::cout << "dx : " << dx.sizes() << std::endl;
-    std::cout << "dx : \n" << dx << std::endl;
-
-    std::cout << "dz : " << dz.sizes() << std::endl;
-
 
     // return updates
     return {dx, dz};
