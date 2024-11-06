@@ -94,7 +94,6 @@ def droid_visualization(video, device="cuda:0"):
             Ps = SE3(poses).inv().matrix().cpu().numpy()
 
 
-            # recuperer la couleur
             images = torch.index_select(video.images[:,0,:,:,:], 0, dirty_index)
             images = images.cpu()[:,[2,1,0],3::8,3::8].permute(0,2,3,1) / 255.0
             points = droid_backends.iproj(SE3(poses).inv().data, disps, video.intrinsics[0]).cpu()
