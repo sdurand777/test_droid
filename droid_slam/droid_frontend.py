@@ -17,6 +17,8 @@ import motion_filter
 
 import os
 
+from PIL import Image
+
 class DroidFrontend:
     def __init__(self, net, video, args):
         self.video = video
@@ -208,6 +210,25 @@ class DroidFrontend:
         # update disp with disp_sens if available
         self.video.disps[self.t1-1] = torch.where(self.video.disps_sens[self.t1-1] > 0, 
            self.video.disps_sens[self.t1-1], self.video.disps[self.t1-1])
+
+
+        tensor_image = self.video.disps[self.t1-1]
+        # Normaliser les valeurs pour être dans l'intervalle [0, 255]
+# Si les valeurs du tenseur sont déjà entre 0 et 1, multiplier directement par 255
+        tensor_image = (tensor_image - tensor_image.min()) / (tensor_image.max() - tensor_image.min())  # Normaliser entre 0 et 1
+        tensor_image = (tensor_image * 255).to(torch.uint8)  # Mettre à l'échelle sur [0, 255]
+
+# Convertir en NumPy pour compatibilité avec PIL
+        np_image = tensor_image.cpu().numpy()
+
+# Créer l'image avec PIL
+        pil_image = Image.fromarray(np_image, mode='L')  # mode 'L' pour une image en niveaux de gris
+
+# Afficher l'image
+        pil_image.show()
+
+        import pdb; pdb.set_trace()
+
 
         for itr in range(self.iters1):
             self.graph.update(None, None, use_inactive=True)
