@@ -256,14 +256,14 @@ if __name__ == '__main__':
         #droid.track(t, image, intrinsics=intrinsics)
         droid.track(t, image, depth, intrinsics=intrinsics)
 
-    # del droid.frontend
-    #
-    # torch.cuda.empty_cache()
-    # print("#" * 32)
-    # droid.backend(7)
-    # torch.cuda.empty_cache()
-    # print("#" * 32)
-    # droid.backend(12)
+    del droid.frontend
+
+    torch.cuda.empty_cache()
+    print("#" * 32)
+    droid.backend(7)
+    torch.cuda.empty_cache()
+    print("#" * 32)
+    droid.backend(12)
 
 
 

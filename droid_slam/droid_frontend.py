@@ -225,9 +225,9 @@ class DroidFrontend:
         pil_image = Image.fromarray(np_image, mode='L')  # mode 'L' pour une image en niveaux de gris
 
 # Afficher l'image
-        pil_image.show()
+        #pil_image.show()
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
 
 
         for itr in range(self.iters1):
